@@ -1,15 +1,20 @@
-name: Deploy to GitHub Pages
+name: Deploy 더이룸학원 to GitHub Pages
+
 on:
   push:
-    branches: ["claude/markdown-second-brain-app-MRH7Q"]
+    branches:
+      - claude/markdown-second-brain-app-MRH7Q
   workflow_dispatch:
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 concurrency:
   group: pages
   cancel-in-progress: true
+
 jobs:
   deploy:
     environment:
@@ -21,10 +26,10 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
-      - name: Upload artifact
+      - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
           path: .
-      - name: Deploy
+      - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
