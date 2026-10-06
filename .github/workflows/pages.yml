@@ -26,10 +26,19 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      # 홈페이지 파일만 공개 (brain/, .claude/, CLAUDE.md 등 개인 파일 제외)
+      - name: Collect site files
+        run: |
+          mkdir _site
+          find . \( -path ./_site -o -path ./brain -o -path './.*' \) -prune -o -type f \
+            \( -iname '*.html' -o -iname '*.css' -o -iname '*.js' -o -iname '*.png' -o -iname '*.jpg' \
+               -o -iname '*.jpeg' -o -iname '*.gif' -o -iname '*.webp' -o -iname '*.svg' -o -iname '*.ico' \
+               -o -iname '*.mp4' -o -iname '*.webm' -o -iname '*.mp3' -o -iname '*.pdf' \) -exec cp --parents {} _site/ \;
+          find _site -type f
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
