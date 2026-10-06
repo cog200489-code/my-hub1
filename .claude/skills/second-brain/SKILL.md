@@ -1,11 +1,11 @@
 ---
 name: second-brain
-description: Use when 원장님 shares an inspiration, video/article link or summary, idea, or memo to save — or asks to find/organize past notes. Saves it as a note in 원장님's Obsidian vault on Google Drive (via the Google Drive connector), matching the vault's existing format.
+description: Use when 주인님 shares an inspiration, video/article link or summary, idea, or memo to save — or asks to find/organize past notes. Saves it as a note in 주인님's Obsidian vault on Google Drive (via the Google Drive connector), matching the vault's existing format.
 ---
 
 # 제2의 뇌 (옵시디언 볼트 · 구글 드라이브)
 
-원장님의 제2의 뇌는 **구글 드라이브에 있는 옵시디언 볼트**다. GitHub 저장소에는 노트를 두지 않는다.
+주인님의 제2의 뇌는 **구글 드라이브에 있는 옵시디언 볼트**다. GitHub 저장소에는 노트를 두지 않는다.
 
 ## 볼트 위치 (Google Drive 폴더 ID)
 - 볼트 루트: `1kF5P1t0D-cFQxaY74ZgnQ95Ha4CWzZBK`
@@ -36,17 +36,17 @@ description: Use when 원장님 shares an inspiration, video/article link or sum
    # 제목
    > 한 줄 요약
    ## 1. 핵심 내용
-   ## 2. Claude의 생각   (좋은 점 / 빈틈·비판 / 원장님 적용 아이디어)
+   ## 2. Claude의 생각   (좋은 점 / 빈틈·비판 / 주인님 적용 아이디어)
    ## 3. 판정
    ## 연결   ([[기존 노트 제목]] 링크)
    ```
 4. 태그는 기존 노트에서 쓰는 태그를 먼저 재사용한다.
-5. 원장님에게는 저장 위치·제목·판정 1~2줄만 보고한다.
+5. 주인님에게는 저장 위치·제목·판정 1~2줄만 보고한다.
 
 ## 찾을 때
 Google Drive `search_files`로 볼트 안에서 제목·본문 검색 후 짧게 목록으로 보여준다.
 
 ## 원칙
 - 확인 안 된 정보는 노트 끝에 ⚠️로 표시
-- 기존 노트를 고치거나 지울 때는 먼저 원장님에게 확인
-- Google Drive 커넥터가 없는 세션이면 그렇다고 말하고, 노트 내용을 채팅으로 주어 원장님이 붙여넣게 한다
+- 기존 노트를 고치거나 지울 때는 먼저 주인님에게 확인
+- Google Drive 커넥터가 없는 세션이면 그렇다고 말하고, 노트 내용을 채팅으로 주어 주인님이 붙여넣게 한다
