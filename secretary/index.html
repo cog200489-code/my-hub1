@@ -80,6 +80,13 @@ input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid
 .small{font-size:12.5px;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:5px}
 .chip{font-size:12px;background:var(--other-soft);color:var(--other);padding:2px 9px;border-radius:99px}
+.advice{display:flex;flex-direction:column;gap:8px;padding-bottom:12px;border-bottom:1px dashed var(--line)}
+.advice:last-child{border-bottom:none}
+.advice .row .box{flex:1 1 140px}
+.advice:not(.latest) .say-card{border-color:var(--line);background:transparent}
+.advice:not(.latest) .say-card .k{color:var(--muted)}
+.advice:not(.latest) .q{font-size:16px}
+.say-card .at{float:right;font-family:var(--f-mono);font-weight:400;letter-spacing:0}
 .caution{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:8px 11px;font-size:14px;font-weight:500}
 .ev{margin:0;padding-left:16px;font-size:13.5px}
 .ev li+li{margin-top:5px}
@@ -116,7 +123,7 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v2.5</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v2.6</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 상담</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -200,32 +207,37 @@ function renderScript(){
   el.innerHTML=h||`<p class="empty">듣고 있습니다. 말씀을 시작하시면 여기에 받아 적습니다.</p>`;
   if(atBottom||!real) el.scrollTop=el.scrollHeight;
 }
-function renderBrief(){
-  const el=$("#brief"); const real=S.live||S.lines.length; const c=S.last||(real?null:EX_CARD);
-  $("#exR").hidden=!!real;
-  if(!c){el.innerHTML=`<p class="empty">상대가 말을 시작하면 비서가 다음 한마디, 근거, 상대 기분을 계속 올립니다.</p>`;return}
-  let h="";
-  if(c){
-    const lv=Math.max(1,Math.min(5,+c.mood?.level||3));
-    const col=lv<=2?"var(--seal)":lv===3?"var(--warn)":"var(--ok)";
-    const tr=(real?S.moods:[3,3,2,2]).slice(-24).map(v=>`<i style="height:${v*3.6}px"></i>`).join("");
-    h+=`<div class="say-card"><div class="k">이렇게 말씀하십시오${c.stage?` · ${esc(c.stage)} 단계`:""}</div>
+function cardHTML(c,i,latest,real){
+  const lv=Math.max(1,Math.min(5,+c.mood?.level||3));
+  const col=lv<=2?"var(--seal)":lv===3?"var(--warn)":"var(--ok)";
+  const q=[].concat(c.search||[]).filter(Boolean).slice(0,3);
+  return `<article class="advice${latest?" latest":""}">
+    <div class="say-card"><div class="k">${latest?"지금 ":""}이렇게 말씀하십시오${c.stage?` · ${esc(c.stage)} 단계`:""}<span class="at">${c._t||""}</span></div>
       <div class="q">“${esc(c.say)}”</div><div class="why">${esc(c.why)}</div>
       ${(c.alt||[]).length?`<ul class="alt">${c.alt.map(a=>`<li>${esc(a)}</li>`).join("")}</ul>`:""}</div>
-     ${c.caution?`<div class="caution">⚠ ${esc(c.caution)}</div>`:""}
-     <div class="row">
+    ${c.caution?`<div class="caution">⚠ ${esc(c.caution)}</div>`:""}
+    <div class="row">
       <div class="box"><h3>상대 기분</h3><div><b>${esc(c.mood?.label||"-")}</b></div>
         <div class="meter" style="--mood:${col}">${[1,2,3,4,5].map(n=>`<i class="${n<=lv?"on":""}"></i>`).join("")}</div>
-        <div class="small">근거: ${esc(c.mood?.signal||"-")}</div><div class="trend" title="기분 흐름">${tr}</div></div>
+        <div class="small">근거: ${esc(c.mood?.signal||"-")}</div>
+        ${latest?`<div class="trend" title="기분 흐름">${(real?S.moods:[3,3,2,2]).slice(-24).map(v=>`<i style="height:${v*3.6}px"></i>`).join("")}</div>`:""}</div>
       <div class="box"><h3>성향</h3><div class="chips">${(c.persona||[]).map(p=>`<span class="chip">${esc(p)}</span>`).join("")||'<span class="small">파악 중</span>'}</div></div>
-     </div>
-     ${(c.evidence||[]).length?`<div class="box"><h3>바로 쓸 근거</h3><ul class="ev">${c.evidence.map(e=>`<li><b>${esc(e.point)}</b> — ${esc(e.detail)}</li>`).join("")}</ul></div>`:""}`;
-  }
-  if(c&&[].concat(c.search||[]).filter(Boolean).length){
-    h+=`<div class="box"><h3>바로 확인할 자료</h3><div class="links">${[].concat(c.search).filter(Boolean).slice(0,3).map(q=>`<a href="https://search.naver.com/search.naver?query=${encodeURIComponent(q)}" target="_blank" rel="noopener">🔎 ${esc(q)}</a>`).join("")}</div></div>`;
-  }
-  if(S.cards.length>1) h+=`<details class="hist"><summary>앞서 드린 제안 ${S.cards.length-1}개</summary><ol>${S.cards.slice(0,-1).reverse().map(x=>`<li>${esc(x.say)}</li>`).join("")}</ol></details>`;
-  el.innerHTML=h;
+    </div>
+    ${(c.evidence||[]).length?`<div class="box"><h3>바로 쓸 근거</h3><ul class="ev">${c.evidence.map(e=>`<li><b>${esc(e.point)}</b> — ${esc(e.detail)}</li>`).join("")}</ul></div>`:""}
+    ${q.length?`<div class="box"><h3>바로 확인할 자료</h3><div class="links">${q.map(x=>`<a href="https://search.naver.com/search.naver?query=${encodeURIComponent(x)}" target="_blank" rel="noopener">🔎 ${esc(x)}</a>`).join("")}</div></div>`:""}
+  </article>`;
+}
+let shownCards=0;
+function renderBrief(){
+  const el=$("#brief"); const real=S.live||S.lines.length;
+  const cards=real?S.cards:[Object.assign({_t:"예시"},EX_CARD)];
+  $("#exR").hidden=!!real;
+  if(!cards.length){el.innerHTML=`<p class="empty">상대가 말을 시작하면 비서가 다음 한마디, 근거, 상대 기분을 계속 올립니다. 지난 조언은 아래로 쌓입니다.</p>`;shownCards=0;return}
+  const prevH=el.scrollHeight, prevTop=el.scrollTop, added=cards.length>shownCards&&shownCards>0;
+  el.innerHTML=cards.map((c,i)=>cardHTML(c,i,i===cards.length-1,real)).reverse().join("");
+  /* 아래로 내려 지난 조언을 읽는 중이면 그 자리를 지킴 */
+  if(added&&prevTop>40) el.scrollTop=prevTop+(el.scrollHeight-prevH);
+  shownCards=cards.length;
 }
 function setStatus(t,cls){$("#statusText").textContent=t;const s=$("#status");s.classList.toggle("live",cls==="live");s.classList.toggle("paused",cls==="paused")}
 function setThinking(t){$("#thinking").textContent=t||""}
@@ -313,7 +325,7 @@ function ctxText(){
   return `당신은 학원 원장의 실시간 상담 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 상대: ${S.setup.role}. 상담 목적: ${mask(S.setup.purpose)||"미정"}.${mask(mem)}${prev}`;
 }
 function applyAdvice(r){
-  if(r&&r.say){S.last=r;S.cards.push(r);S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)))}
+  if(r&&r.say){r._t=new Date().toTimeString().slice(0,5);S.last=r;S.cards.push(r);S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)))}
 }
 let analyzeTimer=null;
 function scheduleAnalyze(force){
