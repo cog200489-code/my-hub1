@@ -26,7 +26,7 @@ status: 📥 수집
 ## 💡 나한테 쓸모 있는 것 (바로 써볼 후보)
 
 - [ ] **Hindsight** → 지금 만드는 *제2의 뇌*에 AI 기억 레이어로 붙여볼 만함
-- [ ] **Impeccable** → `index.html`, `eroum.html` 같은 내가 AI로 만든 페이지 디자인 점검
+- [x] **Impeccable** (2026-10-06 설치: `.claude/skills/impeccable`) → `index.html`, `eroum.html` 같은 내가 AI로 만든 페이지 디자인 점검
 - [ ] **Paperclip** → 업무 자동화 에이전트가 여러 개로 늘어나면 그때 검토
 - [ ] **Voice Studio** → 카드뉴스·쇼츠 영상 더빙용 (유료 ElevenLabs 대체)
 
