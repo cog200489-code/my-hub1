@@ -172,7 +172,7 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const localDate=iso=>{const d=iso?new Date(iso):new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
 const LS={get(k,d){try{const v=localStorage.getItem("fs_"+k);return v==null?d:JSON.parse(v)}catch(_){return d}},set(k,v){try{localStorage.setItem("fs_"+k,JSON.stringify(v))}catch(_){}}};
 
-const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12},LS.get("cfg",{}));
+const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12,stt:"auto",chunk:15},LS.get("cfg",{}));
 if(!/^(auto|gemini)/.test(cfg.gmodel)) cfg.gmodel="auto";
 const S={live:false,paused:false,mode:"auto",lines:[],interim:"",cards:[],last:null,moods:[],setup:{},startedAt:null,memory:[],analyzedUpTo:0,busy:false,lastRun:0};
 
@@ -270,12 +270,13 @@ const FALLBACK=["gemini-flash-latest","gemini-3.5-flash","gemini-flash-lite-late
 let modelOrder=null;
 function models(){ if(cfg.gmodel!=="auto") return [cfg.gmodel,...FALLBACK.filter(m=>m!==cfg.gmodel)]; return modelOrder||FALLBACK; }
 async function ai(prompt,maxTokens){
+  const parts=Array.isArray(prompt)?prompt:[{text:prompt}];
   let lastErr=null;
   for(const m of models()){
     try{
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,{method:"POST",
         headers:{"content-type":"application/json","x-goog-api-key":cfg.gkey},
-        body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",maxOutputTokens:maxTokens,temperature:0.6}})});
+        body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",maxOutputTokens:maxTokens,temperature:0.6}})});
       const j=await r.json().catch(()=>({}));
       if(!r.ok){const e=new Error(j?.error?.message||("HTTP "+r.status));e.status=r.status;
         if(r.status===404||r.status===429||r.status===503){lastErr=e;continue}
@@ -296,9 +297,28 @@ function apiError(e){
 }
 
 function transcript(n){return S.lines.slice(-n).map(l=>`[${l.id}][${l.spk==="me"?"나":l.spk==="other"?"상대":"미정"}] ${mask(l.text)}`).join("\n")}
+
+const ADVICE_SPEC=`"say":"원장이 그대로 읽을 다음 한마디(존댓말, 2문장 이내)",
+"why":"이 말이 좋은 이유 한 줄",
+"alt":["흐름이 바뀌면 쓸 대안(최대 2개)"],
+"evidence":[{"point":"근거 핵심","detail":"제도·수치·사례 한두 문장. 확실한 것만"}],
+"search":["원장이 확인하면 좋을 네이버 검색어(최대 3개)"],
+"mood":{"label":"상대의 지금 기분 두세 단어","level":1~5,"signal":"그렇게 본 발화"},
+"persona":["상대 성향 태그 3~5개"],
+"caution":"원장이 지금 조심할 점. 없으면 빈 문자열",
+"stage":"도입|탐색|제안|합의|마무리"`;
+function ctxText(){
+  const mem=S.memory.length?`\n같은 상대와의 지난 상담(오래된 순):\n${S.memory.map(m=>`- ${m.date}: ${m.summary}${m.tip?` / 다음 팁: ${m.tip}`:""}`).join("\n")}`:"";
+  const prev=S.last?`\n직전에 제안한 말: "${S.last.say}" (같은 말 반복 금지, 대화가 진행된 만큼 다음 단계로)`:"";
+  return `당신은 학원 원장의 실시간 상담 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 상대: ${S.setup.role}. 상담 목적: ${mask(S.setup.purpose)||"미정"}.${mask(mem)}${prev}`;
+}
+function applyAdvice(r){
+  if(r&&r.say){S.last=r;S.cards.push(r);S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)))}
+}
 let analyzeTimer=null;
 function scheduleAnalyze(force){
   if(!cfg.gkey) return;
+  if(listenMode()==="audio"&&!force) return;
   clearTimeout(analyzeTimer);
   const since=Date.now()-S.lastRun, gap=cfg.interval*1000;
   const newCount=S.lines.length-S.analyzedUpTo;
@@ -308,9 +328,7 @@ function scheduleAnalyze(force){
 async function analyze(){
   if(S.busy||!S.lines.length){return}
   S.busy=true; S.lastRun=Date.now(); const upTo=S.lines.length; setThinking("분석 중…");
-  const mem=S.memory.length?`\n같은 상대와의 지난 상담(오래된 순):\n${S.memory.map(m=>`- ${m.date}: ${m.summary}${m.tip?` / 다음 팁: ${m.tip}`:""}`).join("\n")}`:"";
-  const prev=S.last?`\n직전에 제안한 말: "${S.last.say}" (같은 말 반복 금지, 대화가 진행된 만큼 다음 단계로)`:"";
-  const prompt=`당신은 학원 원장의 실시간 상담 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 상대: ${S.setup.role}. 상담 목적: ${mask(S.setup.purpose)||"미정"}.${mask(mem)}${prev}
+  const prompt=`${ctxText()}
 
 음성 받아쓰기로 실시간 기록 중인 대화입니다(오타·끊김 있음). [미정] 줄은 말투와 내용으로 화자를 판별하세요(설명·제안·질문으로 이끄는 쪽=원장, 고민·사정을 말하는 쪽=상대).
 
@@ -318,26 +336,101 @@ ${transcript(40)}
 
 원장이 대화 주도권을 갖도록 지금 할 다음 한마디를 선제적으로 제안하세요. JSON 하나만 출력:
 {"speakers":{"L번호":"me|other"},
-"say":"원장이 그대로 읽을 다음 한마디(존댓말, 2문장 이내)",
-"why":"이 말이 좋은 이유 한 줄",
-"alt":["흐름이 바뀌면 쓸 대안(최대 2개)"],
-"evidence":[{"point":"근거 핵심","detail":"제도·수치·사례 한두 문장. 확실한 것만"}],
-"search":["원장이 확인하면 좋을 네이버 검색어(최대 3개)"],
-"mood":{"label":"상대의 지금 기분 두세 단어","level":1~5,"signal":"그렇게 본 발화"},
-"persona":["상대 성향 태그 3~5개"],
-"caution":"원장이 지금 조심할 점. 없으면 빈 문자열",
-"stage":"도입|탐색|제안|합의|마무리"}`;
+${ADVICE_SPEC}}`;
   try{
     const r=parseJSON(await ai(prompt,1400));
     if(r){
       for(const [id,spk] of Object.entries(r.speakers||{})){const l=S.lines.find(x=>x.id===id); if(l&&!l.fixed&&(spk==="me"||spk==="other")) l.spk=spk}
-      if(r.say){S.last=r;S.cards.push(r);S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)))}
+      applyAdvice(r);
       S.analyzedUpTo=upTo; renderScript(); renderBrief();
     }
     setThinking("");
   }catch(e){apiError(e)}
   finally{S.busy=false; if(S.live&&S.lines.length>S.analyzedUpTo) scheduleAnalyze()}
 }
+
+/* ---------------- 녹음 + 제미나이 받아쓰기 (폰: 소리 없이 계속 녹음) ---------------- */
+function listenMode(){return cfg.stt==="auto"?(IS_ANDROID||!SR?"audio":"web"):cfg.stt}
+let media=null, mr=null, actx=null, levelTimer=null, chunkTimer=null, voiced=0, chunkQ=[], chunkBusy=false, chunkStart=0, tickTimer=null;
+function pickMime(){if(!window.MediaRecorder)return null;for(const m of ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4"]) if(MediaRecorder.isTypeSupported(m)) return m; return ""}
+async function startAudio(){
+  if(!navigator.mediaDevices?.getUserMedia||pickMime()===null) throw Object.assign(new Error("이 브라우저는 녹음을 지원하지 않습니다"),{name:"NotSupported"});
+  if(!media||!media.active) media=await navigator.mediaDevices.getUserMedia({audio:window.__RAW_MIC?true:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
+  try{
+    actx=actx||new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==="suspended") await actx.resume();
+    const an=actx.createAnalyser(); an.fftSize=1024; actx.createMediaStreamSource(media).connect(an);
+    const buf=new Float32Array(an.fftSize); clearInterval(levelTimer);
+    levelTimer=setInterval(()=>{an.getFloatTimeDomainData(buf);let q=0;for(let i=0;i<buf.length;i++)q+=buf[i]*buf[i];if(Math.sqrt(q/buf.length)>0.006)voiced++},100);
+  }catch(_){voiced=999}
+  recordChunk();
+  clearInterval(tickTimer); tickTimer=setInterval(renderListening,1000);
+}
+function recordChunk(){
+  if(!S.live||S.paused||!media) return;
+  const mime=pickMime(); const parts=[]; voiced=levelTimer&&!window.__RAW_MIC?0:999; chunkStart=Date.now();
+  const r=new MediaRecorder(media,mime?{mimeType:mime,audioBitsPerSecond:32000}:undefined); mr=r;
+  r.ondataavailable=e=>{if(e.data&&e.data.size)parts.push(e.data)};
+  r.onstop=()=>{
+    const v=voiced; const type=(r.mimeType||mime||"audio/webm").split(";")[0];
+    if(S.live&&!S.paused) recordChunk();
+    if(v>=3&&parts.length){chunkQ.push({blob:new Blob(parts,{type}),t:new Date(chunkStart)});pumpChunks()}
+  };
+  r.start(); clearTimeout(chunkTimer); chunkTimer=setTimeout(()=>{try{r.state!=="inactive"&&r.stop()}catch(_){}} ,cfg.chunk*1000);
+}
+function stopAudio(release){
+  clearTimeout(chunkTimer); try{mr&&mr.state!=="inactive"&&mr.stop()}catch(_){}
+  clearInterval(tickTimer); S.interim=""; renderScript();
+  if(release){clearInterval(levelTimer);levelTimer=null;try{media&&media.getTracks().forEach(t=>t.stop())}catch(_){};media=null;try{actx&&actx.close()}catch(_){};actx=null}
+}
+function renderListening(){
+  if(listenMode()!=="audio"||!S.live) return;
+  const sec=Math.round((Date.now()-chunkStart)/1000);
+  S.interim=S.paused?"":`🎙 듣는 중 ${sec}초${chunkQ.length||chunkBusy?" · 받아쓰는 중…":""}`; renderScript();
+}
+function b64(blob){return new Promise((res,rej)=>{const f=new FileReader();f.onload=()=>res(String(f.result).split(",")[1]);f.onerror=rej;f.readAsDataURL(blob)})}
+async function pumpChunks(){
+  if(chunkBusy) return; chunkBusy=true;
+  try{
+    while(chunkQ.length){
+      const c=chunkQ.shift(); if(!cfg.gkey) break;
+      setThinking("받아쓰는 중…");
+      const prompt=`${ctxText()}
+
+지금까지의 대화 기록:
+${transcript(30)||"(아직 없음)"}
+
+첨부한 오디오는 이 상담의 다음 ${cfg.chunk}초입니다(앞뒤가 말 중간에 잘렸을 수 있음). 한국어로 정확히 받아쓰고 화자를 나누세요. 설명·제안·질문으로 이끄는 쪽이 원장(me), 고민·사정을 말하는 쪽이 상대(other)입니다. 말소리가 없거나 잡음뿐이면 lines를 빈 배열로 두세요. 들리지 않은 말을 지어내지 마세요.
+그다음 원장이 주도권을 갖도록 지금 할 다음 한마디를 선제적으로 제안하세요. 새 말이 없으면 advice는 null.
+JSON 하나만 출력:
+{"lines":[{"spk":"me|other","text":"받아쓴 문장"}],
+"advice":{${ADVICE_SPEC}}}`;
+      let r=null;
+      for(let attempt=0;attempt<2&&!r;attempt++){
+        try{ r=parseJSON(await ai([{inline_data:{mime_type:c.blob.type,data:await b64(c.blob)}},{text:prompt}],2200)) }
+        catch(e){ apiError(e); if(e.status===429&&attempt===0) await new Promise(z=>setTimeout(z,8000)); else break }
+      }
+      if(r){
+        const t=c.t.toTimeString().slice(0,8);
+        for(const l of (r.lines||[])){const text=String(l.text||"").trim(); if(!text) continue;
+          const fixed=S.mode!=="auto"; S.lines.push({id:"L"+(S.lines.length+1),spk:fixed?S.mode:(l.spk==="me"?"me":"other"),text,t,fixed})}
+        if(r.advice&&r.advice.say){applyAdvice(r.advice); S.analyzedUpTo=S.lines.length}
+        setThinking(""); renderScript(); renderBrief();
+      }
+    }
+  }finally{chunkBusy=false; renderListening()}
+}
+async function drainAudio(){for(let i=0;i<120&&(chunkQ.length||chunkBusy);i++) await new Promise(z=>setTimeout(z,500))}
+
+async function startListen(){
+  if(listenMode()==="audio"){
+    try{await startAudio()}catch(e){
+      S.paused=true; setStatus("마이크 차단됨","paused");
+      $("#hint").innerHTML='<span class="err">'+(e.name==="NotSupported"?"이 브라우저는 녹음을 지원하지 않습니다. 크롬으로 열어 주세요.":"마이크가 차단되어 있습니다. 주소창 왼쪽 아이콘 → 권한 → 마이크 허용 후 다시 듣기를 누르세요.")+'</span>';
+      $("#pauseBtn").textContent="다시 듣기";
+    }
+  } else startRec();
+}
+function stopListen(release){ if(listenMode()==="audio") stopAudio(release); else stopRec(); }
 /* ---------------- memory ---------------- */
 function sessions(){return LS.get("sessions",[])}
 function refreshNames(){const ns=[...new Set(sessions().map(s=>s.name).filter(Boolean))];$("#names").innerHTML=ns.map(n=>`<option value="${esc(n)}">`).join("")}
@@ -356,17 +449,17 @@ document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",(
 $("#askBtn").addEventListener("click",()=>scheduleAnalyze(true));
 $("#pauseBtn").addEventListener("click",()=>{
   if(!S.live) return; S.paused=!S.paused;
-  if(S.paused){stopRec();setStatus("일시정지","paused");$("#pauseBtn").textContent="다시 듣기"}
-  else{startRec();setStatus("듣는 중 · "+(S.setup.name||S.setup.role),"live");$("#pauseBtn").textContent="일시정지"}
+  if(S.paused){stopListen(false);setStatus("일시정지","paused");$("#pauseBtn").textContent="다시 듣기"}
+  else{startListen();setStatus("듣는 중 · "+(S.setup.name||S.setup.role),"live");$("#pauseBtn").textContent="일시정지"}
 });
 
 let wake=null;
 async function keepAwake(){try{wake=await navigator.wakeLock?.request("screen")}catch(_){}}
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.live){keepAwake(); if(!S.paused){try{rec.start()}catch(_){}}}});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.live){keepAwake(); if(!S.paused&&listenMode()==="web"){try{rec.start()}catch(_){}}}});
 
 $("#setup").addEventListener("submit",e=>{
   e.preventDefault(); if(S.live) return;
-  if(!SR){openSheet("이 브라우저는 받아쓰기를 지원하지 않습니다",`<p>크롬(Chrome)으로 이 주소를 열어 주세요. 삼성 인터넷이나 사파리는 연속 받아쓰기를 지원하지 않습니다.</p>`,[["닫기",closeSheet]]);return}
+  if(!SR&&listenMode()==="web"){openSheet("이 브라우저는 받아쓰기를 지원하지 않습니다",`<p>크롬(Chrome)으로 이 주소를 열어 주세요. 삼성 인터넷이나 사파리는 연속 받아쓰기를 지원하지 않습니다.</p>`,[["닫기",closeSheet]]);return}
   if(!cfg.gkey){openSettings(true);return}
   S.setup={name:$("#pName").value.trim(),role:$("#pRole").value,purpose:$("#pPurpose").value.trim()};
   matchMemory();
@@ -374,16 +467,18 @@ $("#setup").addEventListener("submit",e=>{
   $("#setup").hidden=true; $("#controls").hidden=false; $("#pauseBtn").textContent="일시정지";
   $("#hint").textContent="폰은 화면을 켜 둔 채 두 사람 사이에 놓아 주세요. 틀린 이름표는 누르면 바뀝니다.";
   setStatus("듣는 중 · "+(S.setup.name||S.setup.role),"live");
-  renderScript(); renderBrief(); startRec(); keepAwake();
+  renderScript(); renderBrief(); startListen(); keepAwake();
 });
 $("#endBtn").addEventListener("click",()=>{
   openSheet("상담을 마칠까요?",`<p>${S.lines.length}줄을 정리해서 기억해 둡니다.</p>`,[["계속하기",closeSheet],["종료·정리",finish,"primary"]]);
 });
 
 async function finish(){
-  S.live=false; stopRec(); clearTimeout(analyzeTimer); try{wake?.release()}catch(_){}
+  const wasAudio=listenMode()==="audio";
+  S.live=false; stopListen(true); clearTimeout(analyzeTimer); try{wake?.release()}catch(_){}
   setStatus("정리 중","");
-  openSheet("상담 정리 중",`<p class="thinking">대화를 요약하고 있습니다…</p>`,[]);
+  openSheet("상담 정리 중",`<p class="thinking">${wasAudio?"마지막 말을 받아쓰고 ":""}대화를 요약하고 있습니다…</p>`,[]);
+  if(wasAudio) await drainAudio();
   let sum=null;
   if(S.lines.length&&cfg.gkey){
     try{
@@ -504,7 +599,12 @@ async function openSettings(first){
         <option value="gemini-flash-lite-latest"${cfg.gmodel==="gemini-flash-lite-latest"?" selected":""}>Flash-Lite — 빠르고 무료 한도 넉넉</option>
         <option value="gemini-flash-latest"${cfg.gmodel==="gemini-flash-latest"?" selected":""}>Flash — 조언이 더 깊음</option></select></label>
       <p class="small" style="margin:-6px 0 0">상대 이름은 구글로 보내지 않고 '상대'로 바꿔 보냅니다. 무료 키는 구글이 대화 내용을 검토·학습에 쓸 수 있습니다.</p>
-      <label class="f">조언 갱신 간격<select id="sInt">${[8,12,20,30].map(n=>`<option value="${n}"${cfg.interval===n?" selected":""}>${n}초</option>`).join("")}</select></label>
+      <label class="f">받아쓰기 방식<select id="sStt">
+        <option value="auto"${cfg.stt==="auto"?" selected":""}>자동 — 폰은 녹음 방식, 노트북은 크롬 받아쓰기 (권장)</option>
+        <option value="audio"${cfg.stt==="audio"?" selected":""}>녹음 방식 — 소리 없이 계속 녹음, 몇 초씩 늦게 뜸</option>
+        <option value="web"${cfg.stt==="web"?" selected":""}>크롬 받아쓰기 — 바로 뜨지만 폰에선 '띵' 소리 반복</option></select></label>
+      <label class="f">녹음 방식: 한 번에 보내는 길이<select id="sChunk">${[10,15,20,30].map(n=>`<option value="${n}"${cfg.chunk===n?" selected":""}>${n}초</option>`).join("")}</select></label>
+      <label class="f">조언 갱신 간격 (크롬 받아쓰기)<select id="sInt">${[8,12,20,30].map(n=>`<option value="${n}"${cfg.interval===n?" selected":""}>${n}초</option>`).join("")}</select></label>
       <label class="f">내 이름<input id="sMe" value="${esc(cfg.me)}"></label>
       ${canPickFolder?`<div class="box"><h3>옵시디언 볼트 자동 저장 (노트북)</h3>
         <p class="small" style="margin:0 0 6px">${dir?`지금 저장 폴더: <b>${esc(dir.name)}</b>`:"구글 드라이브의 볼트 폴더를 고르면 상담 노트가 자동으로 들어갑니다."}</p>
@@ -513,7 +613,7 @@ async function openSettings(first){
   $("#sPick")?.addEventListener("click",async ev=>{const n=await pickVault(); if(n) ev.target.previousElementSibling.innerHTML=`지금 저장 폴더: <b>${esc(n)}</b>`});
 }
 function saveSettings(){
-  cfg.gkey=$("#sKey").value.trim(); cfg.gmodel=$("#sModel").value; modelOrder=null; cfg.interval=+$("#sInt").value; cfg.me=$("#sMe").value.trim()||"천양진 원장";
+  cfg.gkey=$("#sKey").value.trim(); cfg.gmodel=$("#sModel").value; modelOrder=null; cfg.interval=+$("#sInt").value; cfg.stt=$("#sStt").value; cfg.chunk=+$("#sChunk").value; cfg.me=$("#sMe").value.trim()||"천양진 원장";
   LS.set("cfg",cfg); closeSheet();
   if(cfg.gkey&&!S.live) $("#hint").textContent="설정을 저장했습니다. 상담 시작을 누르세요.";
 }
@@ -521,7 +621,7 @@ $("#setBtn").addEventListener("click",()=>openSettings(false));
 
 /* ---------------- boot ---------------- */
 refreshNames(); renderScript(); renderBrief();
-if(!SR) $("#hint").innerHTML='<span class="err">이 브라우저는 연속 받아쓰기를 지원하지 않습니다. 크롬으로 열어 주세요.</span>';
+if(!SR&&listenMode()==="web") $("#hint").innerHTML='<span class="err">이 브라우저는 연속 받아쓰기를 지원하지 않습니다. 크롬으로 열어 주세요.</span>';
 else if(!cfg.gkey) $("#hint").textContent="처음 한 번 '설정'에서 제미나이 무료 키를 넣어 주세요. 그다음부터는 상담 시작만 누르면 됩니다.";
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
