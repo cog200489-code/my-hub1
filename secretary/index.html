@@ -103,6 +103,13 @@ button.ask{background:var(--seal);border-color:var(--seal);color:#fff;font-weigh
 .line p{margin:0;min-width:0;overflow-wrap:anywhere}
 .line time{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);margin-left:6px}
 .interim p{color:var(--muted);font-style:italic}
+p.txt{cursor:text;border-radius:5px;padding:1px 3px;margin:-1px -3px}
+p.txt:hover{background:var(--bg)}
+.ed{font-size:11px;color:var(--me);margin-left:4px}
+.edbox{display:flex;flex-direction:column;gap:5px;min-width:0}
+.edbox textarea{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1.5px solid var(--me);border-radius:7px;padding:6px 8px;width:100%;resize:vertical}
+.edbar{display:flex;gap:5px;flex-wrap:wrap;align-items:center}
+.edbar button{padding:5px 10px;font-size:13px}
 .empty{color:var(--muted);font-size:13.5px;margin:auto;text-align:center;max-width:34ch}
 .say-card{border:1.5px solid var(--seal);border-radius:10px;padding:10px 12px;background:var(--seal-soft)}
 .say-card .k{font-size:11px;color:var(--seal);font-weight:600;letter-spacing:.08em}
@@ -163,7 +170,7 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.2</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.3</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -174,7 +181,7 @@ a{color:var(--me)}
     <datalist id="names"></datalist>
     <label class="f">대화 종류<select id="pType">
       <option value="consult">학부모 상담</option><option value="career">학생 진학상담</option><option value="debate">토의·토론</option>
-      <option value="rebuke">선생님 질책·피드백</option><option value="mentor">선배·멘토 조언 듣기</option><option value="listen">고민 들어주기</option><option value="daily">아내와 일상 대화</option></select></label>
+      <option value="rebuke">선생님 질책·피드백</option><option value="mentor">선배·멘토 조언 듣기</option><option value="listen">고민 들어주기</option><option value="daily">아내와 일상 대화</option><option value="etc">기타 (목적을 적어 주세요)</option></select></label>
     <label class="f" style="flex:2 1 220px">대화 목적 (선택)<input id="pPurpose" placeholder="예: 고1 내신 하락, 수학 반 이동 고민" autocomplete="off"></label>
     <button class="primary big" id="startBtn" type="submit">🎤 대화 시작</button>
     <div class="memo-chip" id="memoChip" hidden></div>
@@ -245,12 +252,15 @@ const EX_CARD={say:"옮기실지 판단하시기 전에, 이번 시험에서 틀
 
 /* ---------------- render ---------------- */
 function spkLabel(s){return s==="me"?"나":s==="other"?(S.setup.name||"상대"):"판별중"}
+let editing=-1;
 function renderScript(){
-  const el=$("#script"); const atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<60;
+  const el=$("#script");
+  if(editing>=0){ $("#lineCount").textContent=S.lines.length+"줄"; const n=el.querySelector(".pending"); if(n) n.textContent=S.lines.length-1>editing?`새 말 ${S.lines.length-1-editing}줄 대기 중`:""; return }
+  const atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<60;
   const real=S.live||S.lines.length; const lines=real?S.lines:EX_LINES;
   $("#exL").hidden=!!real; $("#lineCount").textContent=S.lines.length+"줄";
   let h=lines.map((l,i)=>{const c=l.spk==="me"?"me":l.spk==="other"?"other":"unk";
-    return `<div class="line"><button class="who ${c}" data-i="${i}" title="눌러서 화자 바꾸기">${esc(spkLabel(l.spk))}</button><p>${esc(l.text)}<time>${l.t||""}</time></p></div>`}).join("");
+    return `<div class="line"><button class="who ${c}" data-i="${i}" title="눌러서 화자 바꾸기">${esc(spkLabel(l.spk))}</button><p class="txt" data-i="${i}" title="눌러서 고치기">${esc(l.text)}${l.edited?'<span class="ed">✎</span>':""}<time>${l.t||""}</time></p></div>`}).join("");
   if(S.interim) h+=`<div class="line interim"><span class="who unk">…</span><p>${esc(S.interim)}</p></div>`;
   el.innerHTML=h||`<p class="empty">듣고 있습니다. 말씀을 시작하시면 여기에 받아 적습니다.</p>`;
   if(atBottom||!real) el.scrollTop=el.scrollHeight;
@@ -291,6 +301,11 @@ const MODES={
   kinds:"공감 한마디|열린 질문|주의|도움 연결",trigger:"상대가 감정이나 고민의 핵심을 드러낸 순간, 또는 원장이 해결책을 서두르는 순간",
   gauges:[["감정 강도",1],["마음 열림",0],["위로 필요",1]],lists:["털어놓은 고민","원하는 것(위로·해결)","놓친 감정"],
   stages:["털어놓기","공감","탐색","정리"],talkMax:40},
+ etc:{label:"기타",partner:"상대",goal:"대화의 성격을 스스로 파악해, 원장이 필요한 순간에 근거와 할 말을 대 주고 놓치기 쉬운 것을 챙기는 것",
+  me:"말투와 내용으로 판별. 대화 목적과 이전 발언의 흐름을 참고",
+  kinds:"질문 답변|사실 확인|기억할 일|주의|기회",trigger:"상대의 질문·요청·주장·약속, 또는 원장이 놓치면 안 될 순간",
+  gauges:[["관심",0],["호감",0],["긴장",1]],lists:["상대의 관심사","상대가 원하는 것","챙길 것"],
+  stages:null,talkMax:65},
  daily:{label:"아내와 일상 대화",partner:"아내",goal:"편안한 대화를 돕되 끼어들지 않고, 아내가 말한 약속·부탁·기분 변화를 놓치지 않게 챙기는 것",
   me:"남편=원장, 아내=상대",
   kinds:"기억할 일|센스 한마디|주의",trigger:"아내가 부탁·약속·날짜·기분 변화를 말한 순간. 그 외에는 쪽지를 쓰지 않음",
@@ -412,6 +427,7 @@ function startRec(){
   return true;
 }
 function stopRec(){S.interim="";try{rec&&rec.stop()}catch(_){}}
+function renumber(){S.lines.forEach((l,k)=>l.id="L"+(k+1))}
 function addLine(text){
   const now=Date.now(); if(text===lastFinal.text&&now-lastFinal.at<4000) return; lastFinal={text,at:now};
   const t=new Date().toTimeString().slice(0,8);
@@ -451,7 +467,7 @@ function apiError(e){
   else setThinking("조언 실패: "+e.message.slice(0,60));
 }
 
-function transcript(n){return S.lines.slice(-n).map(l=>`[${l.id}][${l.spk==="me"?"나":l.spk==="other"?"상대":"미정"}${l.voice&&l.spk==="?"?"·목소리"+l.voice:""}] ${mask(l.text)}`).join("\n")}
+function transcript(n){return S.lines.slice(-n).map(l=>`[${l.id}][${l.spk==="me"?"나":l.spk==="other"?"상대":"미정"}${l.voice&&l.spk==="?"?"·목소리"+l.voice:""}${l.edited?"·원장 수정":""}] ${mask(l.text)}`).join("\n")}
 
 const ADVICE_SPEC=`"say":"원장이 그대로 읽을 다음 한마디(존댓말, 2문장 이내)",
 "why":"이 말이 좋은 이유 한 줄",
@@ -474,7 +490,7 @@ function ctxText(){
 }
 function applyAdvice(r){ if(r&&r.say){r._t=new Date().toTimeString().slice(0,5);S.last=r;S.cards.push(r)} }
 function applySpeakers(r){for(const [id,spk] of Object.entries(r?.speakers||{})){const l=S.lines.find(x=>x.id===id); if(l&&!l.fixed&&(spk==="me"||spk==="other")) l.spk=spk}}
-function SPK(){return `[미정] 줄은 말투와 내용으로 화자를 판별하세요(${M().me}). me=원장, other=상대.`}
+function SPK(){return `[미정] 줄은 말투와 내용으로 화자를 판별하세요(${M().me}). me=원장, other=상대. "원장 수정" 표시 줄은 원장이 직접 고친 정확한 내용이니 가장 믿을 만한 근거로 삼으세요.`}
 let analyzeTimer=null;
 function scheduleAnalyze(force){
   if(!cfg.gkey) return;
@@ -631,7 +647,18 @@ function matchMemory(){
 $("#pName").addEventListener("change",matchMemory); $("#pName").addEventListener("blur",matchMemory);
 
 /* ---------------- controls ---------------- */
-$("#script").addEventListener("click",e=>{const b=e.target.closest("button.who");if(!b||!S.lines.length)return;
+$("#script").addEventListener("click",e=>{
+  if(!S.lines.length) return;
+  const act=e.target.closest("[data-ed]");
+  if(act){ const i=editing, l=S.lines[i]; const ta=$("#edTa");
+    if(act.dataset.ed==="save"&&l){ const v=ta.value.trim(); if(v&&v!==l.text){l.text=v;l.edited=true;S.analyzedUpTo=Math.min(S.analyzedUpTo,i);} if(!v){S.lines.splice(i,1);renumber()} }
+    if(act.dataset.ed==="del"&&l){S.lines.splice(i,1);renumber();S.analyzedUpTo=Math.min(S.analyzedUpTo,S.lines.length)}
+    editing=-1; renderScript(); if(act.dataset.ed!=="cancel") scheduleAnalyze(); return }
+  const t=e.target.closest("p.txt");
+  if(t&&editing<0){ editing=+t.dataset.i; const l=S.lines[editing]; if(!l){editing=-1;return}
+    t.outerHTML=`<div class="edbox"><textarea id="edTa" rows="3">${esc(l.text)}</textarea><div class="edbar"><button data-ed="save" class="primary">저장</button><button data-ed="cancel">취소</button><button data-ed="del" class="danger">줄 삭제</button><span class="small pending"></span></div></div>`;
+    const ta=$("#edTa"); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); return }
+  const b=e.target.closest("button.who");if(!b)return;
   const l=S.lines[+b.dataset.i]; if(!l) return; l.spk=l.spk==="me"?"other":"me"; l.fixed=true; renderScript()});
 document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",()=>{S.mode=b.dataset.spk;document.querySelectorAll(".seg button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)))}));
 $("#askBtn").addEventListener("click",advise);
