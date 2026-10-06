@@ -163,18 +163,20 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.1</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.2</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
-    <button id="pastBtn">지난 상담</button>
+    <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
   </header>
 
   <form class="setup" id="setup">
     <label class="f">상대 이름<input id="pName" placeholder="예: 김민서 어머님" autocomplete="off" list="names"></label>
     <datalist id="names"></datalist>
-    <label class="f">관계<select id="pRole"><option>학부모</option><option>학생</option><option>강사</option><option>지인</option><option>기타</option></select></label>
-    <label class="f" style="flex:2 1 220px">상담 목적 (선택)<input id="pPurpose" placeholder="예: 고1 내신 하락, 수학 반 이동 고민" autocomplete="off"></label>
-    <button class="primary big" id="startBtn" type="submit">🎤 상담 시작</button>
+    <label class="f">대화 종류<select id="pType">
+      <option value="consult">학부모 상담</option><option value="career">학생 진학상담</option><option value="debate">토의·토론</option>
+      <option value="rebuke">선생님 질책·피드백</option><option value="mentor">선배·멘토 조언 듣기</option><option value="listen">고민 들어주기</option><option value="daily">아내와 일상 대화</option></select></label>
+    <label class="f" style="flex:2 1 220px">대화 목적 (선택)<input id="pPurpose" placeholder="예: 고1 내신 하락, 수학 반 이동 고민" autocomplete="off"></label>
+    <button class="primary big" id="startBtn" type="submit">🎤 대화 시작</button>
     <div class="memo-chip" id="memoChip" hidden></div>
   </form>
 
@@ -205,7 +207,7 @@ a{color:var(--me)}
     <span class="grow"></span>
     <button class="danger" id="endBtn">종료·정리</button>
   </div>
-  <div class="hint live-hide-target" id="hint">상담 시작을 누르면 마이크가 계속 켜져서 끝날 때까지 받아 적습니다. 화자는 비서가 나눕니다. 이름표를 누르면 바뀝니다.</div>
+  <div class="hint live-hide-target" id="hint">대화 시작을 누르면 마이크가 계속 켜져서 끝날 때까지 받아 적습니다. 화자는 비서가 나눕니다. 이름표를 누르면 바뀝니다.</div>
 </div>
 
 
@@ -257,7 +259,46 @@ const EX_MON={summary:"성적 하락으로 불안한 상태에서 학원 이동�
  emotions:["불안","실망","망설임"],engagement:4,trust:3,resistance:3,concerns:["수학 4등급","아이 자신감 하락"],needs:["원인 설명","구체적 대책"],
  persona:["자녀 정서 민감","결과 중심","직접적 표현"],signals:[{type:"warn",text:"다른 학원 비교 언급 — 이탈 신호"},{type:"good",text:"성적표를 같이 보자는 제안에 응함"}],
  stage:"탐색",open:["학생 본인 의지 확인","다음 시험까지 계획"]};
-const STAGES=["도입","탐색","제안","합의","마무리"];
+/* ---------------- 대화 종류 ---------------- */
+const MODES={
+ consult:{label:"학부모 상담",partner:"학부모",goal:"신뢰를 얻고 원장이 대화 주도권을 쥐어 등록 유지·상담 목적을 달성하는 것",
+  me:"설명·제안·질문으로 이끄는 쪽=원장, 고민·사정을 말하는 쪽=상대",
+  kinds:"질문 답변|반론 대응|사실 확인|주의|기회",trigger:"상대의 질문·걱정·반론·사실 주장",
+  gauges:[["관심",0],["신뢰",0],["저항",1]],lists:["상대의 걱정","상대가 원하는 것","아직 안 다룬 것"],
+  stages:["도입","탐색","제안","합의","마무리"],talkMax:65},
+ career:{label:"학생 진학상담",partner:"학생",goal:"정확한 입시·내신 정보로 학생이 현실적인 목표와 실행 계획을 갖고 의욕을 얻게 하는 것",
+  me:"입시·공부법을 설명하고 질문하는 쪽=원장, 자기 상황·희망을 말하는 쪽=학생",
+  kinds:"입시 정보|질문 답변|동기 부여|주의|확인 필요",trigger:"학생의 질문·희망 진로·성적 이야기·불안",
+  gauges:[["의욕",0],["이해",0],["불안",1]],lists:["학생의 고민","목표·희망","확인할 정보"],
+  stages:["현황","목표","진단","전략","실행"],talkMax:60},
+ debate:{label:"토의·토론",partner:"토론 상대",goal:"원장의 주장을 논리와 근거로 지키고, 상대 논점의 약점을 짚으며, 필요하면 합의점을 찾는 것",
+  me:"말투·이전 발언의 입장으로 판별. 원장의 주장 쪽=원장, 반대·다른 입장=상대",
+  kinds:"반박 근거|논점 정리|사실 확인|양보 포인트|주의",trigger:"상대의 주장·반박·근거 제시·사실 주장",
+  gauges:[["상대 논리",0],["동의도",0],["감정 과열",1]],lists:["상대 논점","합의된 점","남은 쟁점"],
+  stages:["논점 제기","반론","쟁점 정리","결론"],talkMax:101},
+ rebuke:{label:"선생님 질책·피드백",partner:"선생님",goal:"감정이 아니라 사실로 문제를 짚고, 관계를 해치지 않으면서 구체적인 개선 약속을 받아내는 것. 원장의 표현이 지나치면 바로 경고",
+  me:"문제를 지적하고 요구하는 쪽=원장, 해명하거나 사정을 말하는 쪽=선생님",
+  kinds:"사실 정리|말 다듬기|주의|합의안",trigger:"상대의 해명·변명·반발, 또는 원장의 표현이 거칠어진 순간",
+  gauges:[["수용도",0],["방어",1],["내 어조 강도",1]],lists:["핵심 문제","상대의 해명","합의할 개선책"],
+  stages:["사실 확인","해명","개선","합의","격려"],talkMax:70},
+ mentor:{label:"선배·멘토 조언 듣기",partner:"선배",goal:"선배의 조언에서 핵심을 놓치지 않고 정리하며, 더 깊은 조언을 끌어낼 질문을 제때 던지는 것",
+  me:"조언을 듣고 묻는 쪽=원장, 경험과 조언을 말하는 쪽=선배",
+  kinds:"핵심 메모|되물을 질문|실천 아이디어",trigger:"선배가 중요한 조언·경험·숫자를 말한 순간",
+  gauges:[["조언 구체성",0],["열의",0],["원장 공감 표현",0]],lists:["핵심 조언","실행할 것","되물을 질문"],
+  stages:["경청","질문","정리","감사"],talkMax:40},
+ listen:{label:"고민 들어주기",partner:"상대",goal:"상대가 충분히 털어놓도록 공감하고, 섣부른 해결책이나 훈계를 막고, 필요한 경우에만 도움을 연결하는 것",
+  me:"들어주고 되묻는 쪽=원장, 고민을 털어놓는 쪽=상대",
+  kinds:"공감 한마디|열린 질문|주의|도움 연결",trigger:"상대가 감정이나 고민의 핵심을 드러낸 순간, 또는 원장이 해결책을 서두르는 순간",
+  gauges:[["감정 강도",1],["마음 열림",0],["위로 필요",1]],lists:["털어놓은 고민","원하는 것(위로·해결)","놓친 감정"],
+  stages:["털어놓기","공감","탐색","정리"],talkMax:40},
+ daily:{label:"아내와 일상 대화",partner:"아내",goal:"편안한 대화를 돕되 끼어들지 않고, 아내가 말한 약속·부탁·기분 변화를 놓치지 않게 챙기는 것",
+  me:"남편=원장, 아내=상대",
+  kinds:"기억할 일|센스 한마디|주의",trigger:"아내가 부탁·약속·날짜·기분 변화를 말한 순간. 그 외에는 쪽지를 쓰지 않음",
+  gauges:[["아내 기분",0],["대화 몰입",0],["서운함",1]],lists:["아내 관심사","챙길 일·약속","서운할 만한 점"],
+  stages:null,talkMax:60,quiet:true},
+};
+function M(){return MODES[S.setup.type]||MODES.consult}
+
 function lvColor(v){return v<=2?"var(--seal)":v===3?"var(--warn)":"var(--ok)"}
 function spark(vals){
   if(vals.length<2) return `<svg class="spark" viewBox="0 0 100 40" preserveAspectRatio="none"><line x1="0" y1="20" x2="100" y2="20" stroke="var(--line)" stroke-dasharray="2 3"/></svg>`;
@@ -280,21 +321,21 @@ function renderBrief(){
   const mins=S.startedAt&&real?Math.max(0,Math.round((Date.now()-new Date(S.startedAt))/60000)):12;
   if(!m){el.innerHTML=`<div class="mon"><p class="empty">대화가 쌓이면 상대 기분, 관심도, 걱정, 위험 신호를 계속 보여 드립니다. 할 말이 필요하면 아래 💡 조언 받기를 누르세요.</p>
     ${share?`<div class="tile"><h3>말한 비율</h3><div class="split2"><i style="width:${share.me}%;background:var(--me)"></i><i style="width:${share.ot}%;background:var(--other)"></i></div><div class="small">나 ${share.me}% · 상대 ${share.ot}%</div></div>`:""}</div>`;return}
-  const lv=Math.max(1,Math.min(5,+m.mood?.level||3)); const si=STAGES.indexOf(m.stage);
+  const lv=Math.max(1,Math.min(5,+m.mood?.level||3)); const mo=real?M():MODES.consult; const si=mo.stages?mo.stages.indexOf(m.stage):-1; const g=Array.isArray(m.g)?m.g:[m.engagement,m.trust,m.resistance];
   el.innerHTML=`<div class="mon">
     ${m.summary?`<div class="tile"><h3>지금 상황 <span>${real?(m._t||""):"예시"}</span></h3><div style="font-size:13.5px">${esc(m.summary)}</div></div>`:""}
-    <div class="tile"><h3>상대 기분 <span>${mins}분째</span></h3>
+    <div class="tile"><h3>${real?esc(mo.partner):"상대"} 기분 <span>${mins}분째</span></h3>
       <div class="mood-big" style="color:${lvColor(lv)}">${esc(m.mood?.label||"-")}</div>
       <div class="small">${esc(m.mood?.signal||"")}</div>
       ${spark(real?S.moods:[3,3,2,3,2,2])}
       ${(m.emotions||[]).length?`<div class="chips">${m.emotions.map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</div>`:""}</div>
-    <div class="tile"><h3>상대 상태</h3><div class="gauges">${gauge("관심",m.engagement)}${gauge("신뢰",m.trust)}${gauge("저항",m.resistance,true)}</div></div>
+    <div class="tile"><h3>흐름 지표</h3><div class="gauges">${mo.gauges.map((x,i)=>gauge(x[0],g[i],x[1])).join("")}</div></div>
     ${(m.signals||[]).length?`<div class="tile"><h3>신호</h3><ul class="sig">${m.signals.map(x=>`<li class="${x.type==="good"?"good":"warn"}">${x.type==="good"?"✓":"⚠"} ${esc(x.text)}</li>`).join("")}</ul></div>`:""}
-    <div class="tile"><h3>상담 단계</h3><div class="stages">${STAGES.map((x,i)=>`<i class="${i===si?"on":""}">${x}</i>`).join("")}</div></div>
-    ${share?`<div class="tile"><h3>말한 비율</h3><div class="split2"><i style="width:${share.me}%;background:var(--me)"></i><i style="width:${share.ot}%;background:var(--other)"></i></div><div class="small">나 ${share.me}% · 상대 ${share.ot}%${share.me>65?" — 상대 말을 더 들어 보세요":""}</div></div>`:""}
-    ${(m.concerns||[]).length?`<div class="tile"><h3>상대의 걱정</h3><ul>${m.concerns.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
-    ${(m.needs||[]).length?`<div class="tile"><h3>상대가 원하는 것</h3><ul>${m.needs.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
-    ${(m.open||[]).length?`<div class="tile"><h3>아직 안 다룬 것</h3><ul>${m.open.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
+    ${mo.stages?`<div class="tile"><h3>대화 단계</h3><div class="stages">${mo.stages.map((x,i)=>`<i class="${i===si?"on":""}">${x}</i>`).join("")}</div></div>`:""}
+    ${share?`<div class="tile"><h3>말한 비율</h3><div class="split2"><i style="width:${share.me}%;background:var(--me)"></i><i style="width:${share.ot}%;background:var(--other)"></i></div><div class="small">나 ${share.me}% · 상대 ${share.ot}%${share.me>mo.talkMax?" — 상대 말을 더 들어 보세요":""}</div></div>`:""}
+    ${(m.concerns||[]).length?`<div class="tile"><h3>${mo.lists[0]}</h3><ul>${m.concerns.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
+    ${(m.needs||[]).length?`<div class="tile"><h3>${mo.lists[1]}</h3><ul>${m.needs.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
+    ${(m.open||[]).length?`<div class="tile"><h3>${mo.lists[2]}</h3><ul>${m.open.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
     <div class="tile"><h3>성향</h3><div class="chips">${(m.persona||[]).map(p=>`<span class="chip">${esc(p)}</span>`).join("")||'<span class="small">파악 중</span>'}</div></div>
   </div>`;
 }
@@ -304,7 +345,7 @@ const EX_NOTES=[
  {id:"x1",t:"19:02",kind:"질문 답변",trigger:"수학 4등급이면 많이 떨어진 건가요?",head:"5등급제에서 4등급은 상위 66~90% 구간입니다.",points:["고1부터 5등급제 적용","같은 등급 안의 원점수 위치가 중요"],facts:["누적 1등급 10% · 2등급 34% · 3등급 66% · 4등급 90%"],search:"고교 내신 5등급제 비율"},
  {id:"x2",t:"19:03",kind:"반론 대응",trigger:"다른 학원 옮겨야 하나 고민 중",head:"옮기실지는 이번 시험 원인을 같이 본 뒤 정하셔도 늦지 않습니다.",points:["틀린 유형부터 확인 제안","다른 학원 비교는 하지 않기"],facts:[],search:""}];
 function noteHTML(n,isNew){
-  const k=KIND[n.kind]||"warn";
+  const kd=n.kind||""; const k=KIND[kd]||(/반론|반박/.test(kd)?"counter":/사실|정보|근거|메모/.test(kd)?"fact":/주의/.test(kd)?"warn":"answer");
   return `<article class="note k-${k}${n.pinned?" pinned":""}${isNew?" new":""}" data-id="${n.id}">
     <div class="nh"><span class="kind">${esc(n.kind||"쪽지")}</span><span>${esc(n.t||"")}</span>
       <span class="nb"><button data-act="pin" title="고정">${n.pinned?"📌":"📍"}</button><button data-act="del" title="치우기">✕</button></span>
@@ -418,23 +459,22 @@ const ADVICE_SPEC=`"say":"원장이 그대로 읽을 다음 한마디(존댓말,
 "evidence":[{"point":"근거 핵심","detail":"제도·수치·사례 한두 문장. 확실한 것만"}],
 "search":["원장이 확인하면 좋을 네이버 검색어(최대 3개)"],
 "caution":"원장이 지금 조심할 점. 없으면 빈 문자열"`;
-const MONITOR_SPEC=`"summary":"지금 대화 상황 한 줄",
-"mood":{"label":"상대의 지금 기분 두세 단어","level":1~5(1=매우 불편, 5=매우 긍정),"signal":"그렇게 본 발화"},
-"emotions":["상대에게서 읽히는 감정 2~4개"],
-"engagement":1~5(상대의 관심·참여도),"trust":1~5(원장에 대한 신뢰),"resistance":1~5(거부감·방어),
-"concerns":["상대의 걱정(최대 3개)"],"needs":["상대가 원하는 것(최대 3개)"],
+function MONITOR_SPEC(){const mo=M(); return `"summary":"지금 대화 상황 한 줄",
+"mood":{"label":"${mo.partner}의 지금 기분 두세 단어","level":1~5(1=매우 불편, 5=매우 긍정),"signal":"그렇게 본 발화"},
+"emotions":["${mo.partner}에게서 읽히는 감정 2~4개"],
+"g":[${mo.gauges.map(x=>`${x[0]} 1~5`).join(", ")}],
+"concerns":["${mo.lists[0]}(최대 3개)"],"needs":["${mo.lists[1]}(최대 3개)"],"open":["${mo.lists[2]}(최대 3개)"],
 "signals":[{"type":"warn|good","text":"방금 대화에서 나온 위험 신호나 좋은 신호(최대 3개)"}],
-"open":["아직 다루지 않았지만 짚어야 할 것(최대 3개)"],
-"persona":["상대 성향 태그 3~5개"],
-"stage":"도입|탐색|제안|합의|마무리"`;
+"persona":["${mo.partner} 성향 태그 3~5개"]${mo.stages?`,
+"stage":"${mo.stages.join("|")}"`:""}`}
 function ctxText(){
-  const mem=S.memory.length?`\n같은 상대와의 지난 상담(오래된 순):\n${S.memory.map(m=>`- ${m.date}: ${m.summary}${m.tip?` / 다음 팁: ${m.tip}`:""}`).join("\n")}`:"";
+  const mem=S.memory.length?`\n같은 상대와의 지난 대화(오래된 순):\n${S.memory.map(m=>`- ${m.date}: ${m.summary}${m.tip?` / 다음 팁: ${m.tip}`:""}`).join("\n")}`:"";
   const prev=S.last?`\n직전에 제안한 말: "${S.last.say}" (같은 말 반복 금지, 대화가 진행된 만큼 다음 단계로)`:"";
-  return `당신은 학원 원장의 실시간 상담 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 상대: ${S.setup.role}. 상담 목적: ${mask(S.setup.purpose)||"미정"}.${mask(mem)}${prev}`;
+  const mo=M(); return `당신은 ${cfg.me}의 실시간 대화 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 대화 종류: ${mo.label}. 상대: ${mo.partner}. 대화 목적: ${mask(S.setup.purpose)||"미정"}.\n비서의 임무: ${mo.goal}.${mask(mem)}${prev}`;
 }
 function applyAdvice(r){ if(r&&r.say){r._t=new Date().toTimeString().slice(0,5);S.last=r;S.cards.push(r)} }
 function applySpeakers(r){for(const [id,spk] of Object.entries(r?.speakers||{})){const l=S.lines.find(x=>x.id===id); if(l&&!l.fixed&&(spk==="me"||spk==="other")) l.spk=spk}}
-const SPK_RULE=`[미정] 줄은 말투와 내용으로 화자를 판별하세요(설명·제안·질문으로 이끄는 쪽=원장, 고민·사정을 말하는 쪽=상대).`;
+function SPK(){return `[미정] 줄은 말투와 내용으로 화자를 판별하세요(${M().me}). me=원장, other=상대.`}
 let analyzeTimer=null;
 function scheduleAnalyze(force){
   if(!cfg.gkey) return;
@@ -450,18 +490,18 @@ async function analyze(){
   const newFrom=S.analyzedUpTo<S.lines.length?`L${S.analyzedUpTo+1}부터`:"없음";
   const prompt=`${ctxText()}
 
-음성 받아쓰기로 실시간 기록 중인 대화입니다(오타·끊김 있음). ${SPK_RULE}
+음성 받아쓰기로 실시간 기록 중인 대화입니다(오타·끊김 있음). ${SPK()}
 
 ${transcript(40)}
 
-원장은 청문회에서 답변하는 장관처럼 상대의 질문·걱정·반론에 답해야 합니다. 당신은 옆에서 상황을 지켜보며 쪽지를 넣어 주는 참모진입니다.
-1) 상대의 현재 심리와 대화 상황을 분석하세요.
-2) 새로 나온 말(${newFrom}) 가운데 상대의 질문·걱정·반론·사실 주장처럼 원장이 답해야 할 것이 있으면 쪽지를 0~2장 쓰세요. 답할 것이 없으면 notes는 빈 배열입니다.
+원장은 청문회의 장관처럼 노트북을 열어 두고 대화합니다. 당신은 옆에서 상황을 지켜보며 쪽지를 넣어 주는 참모진입니다.
+1) ${M().partner}의 현재 심리와 대화 상황을 분석하세요.
+2) 새로 나온 말(${newFrom}) 가운데 다음에 해당하는 순간이 있으면 쪽지를 ${M().quiet?"0~1":"0~2"}장 쓰세요: ${M().trigger}. 해당하는 순간이 없으면 notes는 빈 배열입니다.
 이미 보낸 쪽지와 같은 주제는 다시 쓰지 마세요. 이미 보낸 쪽지: ${S.notes.slice(-6).map(n=>n.head).join(" / ")||"없음"}
 JSON 하나만 출력:
 {"speakers":{"L번호":"me|other"},
-${MONITOR_SPEC},
-${NOTE_SPEC}}`;
+${MONITOR_SPEC()},
+${NOTE_SPEC()}}`;
   try{
     const r=parseJSON(await ai(prompt,2200,0.4));
     if(r){
@@ -473,7 +513,7 @@ ${NOTE_SPEC}}`;
   }catch(e){apiError(e)}
   finally{S.busy=false; $("#noteThinking").textContent=""; if(S.live&&S.lines.length>S.analyzedUpTo) scheduleAnalyze()}
 }
-const NOTE_SPEC=`"notes":[{"kind":"질문 답변|반론 대응|사실 확인|주의|기회","trigger":"쪽지를 쓰게 만든 상대의 말 요약(25자 이내)","head":"원장이 바로 말할 핵심 답 한 문장(존댓말)","points":["뒷받침할 답변 포인트 2~3개, 각 25자 이내"],"facts":["수치·제도·사례 근거. 확실한 것만, 없으면 빈 배열"],"search":"원장이 확인하면 좋을 네이버 검색어 하나 또는 빈 문자열"}]`;
+function NOTE_SPEC(){return `"notes":[{"kind":"${M().kinds}","trigger":"쪽지를 쓰게 만든 말 요약(25자 이내)","head":"원장이 바로 쓸 핵심 한 문장(존댓말 또는 상황에 맞는 말투)","points":["뒷받침 포인트 2~3개, 각 25자 이내"],"facts":["수치·제도·사례 근거. 확실한 것만, 없으면 빈 배열"],"search":"원장이 확인하면 좋을 네이버 검색어 하나 또는 빈 문자열"}]`}
 let advBusy=false;
 async function advise(){
   const th=$("#noteThinking");
@@ -484,7 +524,7 @@ async function advise(){
   const mon=S.mon?`\n지금 상황판: ${S.mon.summary||""} / 상대 기분 ${S.mon.mood?.label||""} / 걱정: ${(S.mon.concerns||[]).join(", ")}`:"";
   const prompt=`${ctxText()}${mon}
 
-음성 받아쓰기로 기록 중인 대화입니다(오타·끊김 있음). ${SPK_RULE}
+음성 받아쓰기로 기록 중인 대화입니다(오타·끊김 있음). ${SPK()}
 
 ${transcript(40)}
 
@@ -586,7 +626,7 @@ function matchMemory(){
   const n=$("#pName").value.trim(), chip=$("#memoChip");
   const hits=n?sessions().filter(s=>s.name===n).slice(0,3).reverse():[];
   S.memory=hits.map(h=>({date:localDate(h.endedAt),summary:h.summary?.oneLine||"",tip:h.summary?.nextTip||""}));
-  chip.hidden=!hits.length; chip.textContent=`지난 상담 ${hits.length}건을 기억하고 있습니다. 비서가 참고합니다.`;
+  chip.hidden=!hits.length; chip.textContent=`지난 대화 ${hits.length}건을 기억하고 있습니다. 비서가 참고합니다.`;
 }
 $("#pName").addEventListener("change",matchMemory); $("#pName").addEventListener("blur",matchMemory);
 
@@ -609,7 +649,7 @@ $("#setup").addEventListener("submit",e=>{
   e.preventDefault(); if(S.live) return;
   if(!SR&&listenMode()==="web"){openSheet("이 브라우저는 받아쓰기를 지원하지 않습니다",`<p>크롬(Chrome)으로 이 주소를 열어 주세요. 삼성 인터넷이나 사파리는 연속 받아쓰기를 지원하지 않습니다.</p>`,[["닫기",closeSheet]]);return}
   if(!cfg.gkey){openSettings(true);return}
-  S.setup={name:$("#pName").value.trim(),role:$("#pRole").value,purpose:$("#pPurpose").value.trim()};
+  const ty=$("#pType").value; S.setup={type:ty,name:$("#pName").value.trim(),role:MODES[ty].partner,purpose:$("#pPurpose").value.trim()}; LS.set("lastType",ty);
   matchMemory();
   Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,mon:null,notes:[],moods:[],analyzedUpTo:0,lastRun:0,startedAt:new Date().toISOString()});
   $("#setup").hidden=true; $("#controls").hidden=false; $("#pauseBtn").textContent="일시정지";
@@ -618,51 +658,51 @@ $("#setup").addEventListener("submit",e=>{
   seenNotes=new Set(); renderScript(); renderBrief(); renderNotes(); startListen(); keepAwake();
 });
 $("#endBtn").addEventListener("click",()=>{
-  openSheet("상담을 마칠까요?",`<p>${S.lines.length}줄을 정리해서 기억해 둡니다.</p>`,[["계속하기",closeSheet],["종료·정리",finish,"primary"]]);
+  openSheet("대화를 마칠까요?",`<p>${S.lines.length}줄을 정리해서 기억해 둡니다.</p>`,[["계속하기",closeSheet],["종료·정리",finish,"primary"]]);
 });
 
 async function finish(){
   const wasAudio=listenMode()==="audio";
   S.live=false; stopListen(true); clearTimeout(analyzeTimer); try{wake?.release()}catch(_){}
   setStatus("정리 중","");
-  openSheet("상담 정리 중",`<p class="thinking">${wasAudio?"마지막 말을 받아쓰고 ":""}대화를 요약하고 있습니다…</p>`,[]);
+  openSheet("대화 정리 중",`<p class="thinking">${wasAudio?"마지막 말을 받아쓰고 ":""}대화를 요약하고 있습니다…</p>`,[]);
   if(wasAudio) await drainAudio();
   let sum=null;
   if(S.lines.length&&cfg.gkey){
     try{
-      const out=await ai(`학원 원장('나')과 상대(${S.setup.role})의 상담 받아쓰기 기록입니다(오타 있음). 목적: ${mask(S.setup.purpose)||"미정"}.
+      const out=await ai(`${cfg.me}('나')와 ${M().partner}의 대화 받아쓰기 기록입니다(오타 있음). 대화 종류: ${M().label}. 목적: ${mask(S.setup.purpose)||"미정"}.
 ${transcript(600)}
 JSON 하나만 출력:
 {"title":"노트 제목(20자 이내)","oneLine":"한 줄 요약","summary":"핵심 요약 3~5문장",
-"points":["주요 논의"],"concerns":["상대의 걱정·요구"],"promises":["원장이 약속한 것"],
-"followups":["다음에 할 일(누가·언제)"],"persona":["상대 성향 태그"],"moodFlow":"상담 중 기분 변화 한 줄",
-"nextTip":"다음 상담 때 원장이 기억할 조언","tags":["옵시디언 태그(공백 없이, # 없이) 4~7개"]}`,3000);
+"points":["주요 내용"],"concerns":["${M().lists[0]}"],"promises":["원장이 약속하거나 합의한 것"],
+"followups":["다음에 할 일(누가·언제)"],"persona":["상대 성향 태그"],"moodFlow":"대화 중 상대 기분 변화 한 줄",
+"nextTip":"다음에 이 상대와 대화할 때 원장이 기억할 조언","tags":["옵시디언 태그(공백 없이, # 없이) 4~7개"]}`,3000);
       sum=parseJSON(out);
     }catch(e){}
   }
-  sum=sum||{title:"상담 기록",oneLine:"",summary:"",points:[],concerns:[],promises:[],followups:[],persona:[],moodFlow:"",nextTip:"",tags:[]};
+  sum=sum||{title:M().label+" 기록",oneLine:"",summary:"",points:[],concerns:[],promises:[],followups:[],persona:[],moodFlow:"",nextTip:"",tags:[]};
   const md=toMarkdown(sum);
-  const rec2={name:S.setup.name,role:S.setup.role,purpose:S.setup.purpose,startedAt:S.startedAt,endedAt:new Date().toISOString(),summary:sum,markdown:md};
+  const rec2={type:S.setup.type,name:S.setup.name,role:S.setup.role,purpose:S.setup.purpose,startedAt:S.startedAt,endedAt:new Date().toISOString(),summary:sum,markdown:md};
   const all=sessions(); all.unshift(rec2); LS.set("sessions",all.slice(0,300)); refreshNames();
-  const file=`${localDate(S.startedAt)} ${S.setup.name||"상담"} - ${sum.title||"상담"}.md`.replace(/[\\/:*?"<>|]/g,"_");
+  const file=`${localDate(S.startedAt)} ${S.setup.name||M().partner} - ${sum.title||M().label}.md`.replace(/[\\/:*?"<>|]/g,"_");
   const autoSaved=await saveToVault(file,md);
   setStatus(autoSaved?"볼트에 저장됨":"정리 완료","");
   $("#setup").hidden=false; $("#controls").hidden=true; $("#hint").classList.remove("live-hide");
-  $("#hint").textContent="상담 시작을 누르면 마이크가 계속 켜져서 끝날 때까지 받아 적습니다.";
+  $("#hint").textContent="대화 시작을 누르면 마이크가 계속 켜져서 끝날 때까지 받아 적습니다.";
   showNote(md,file,autoSaved);
 }
 function toMarkdown(s){
   const d=localDate(S.startedAt);
-  const tags=["상담","1급비서관",S.setup.role,...(s.tags||[])].map(t=>String(t).replace(/\s+/g,"_").replace(/^#/,"")).filter((v,i,a)=>v&&a.indexOf(v)===i);
+  const tags=["대화기록","1급비서관",M().label.replace(/[·\s]/g,"_"),...(s.tags||[])].map(t=>String(t).replace(/\s+/g,"_").replace(/^#/,"")).filter((v,i,a)=>v&&a.indexOf(v)===i);
   const li=a=>(a&&a.length?a.map(x=>`- ${x}`).join("\n"):"- 없음");
   return `---
 date: ${d}
 상대: ${S.setup.name||"미상"}
-관계: ${S.setup.role}
+종류: ${M().label}
 목적: ${S.setup.purpose||""}
 tags: [${tags.join(", ")}]
 ---
-# ${d} ${S.setup.name||""} — ${s.title||"상담"}
+# ${d} ${S.setup.name||M().partner} — ${s.title||M().label}
 
 > ${s.oneLine||""}
 
@@ -672,10 +712,10 @@ ${s.summary||""}
 ## 주요 논의
 ${li(s.points)}
 
-## 상대의 걱정·요구
+## ${M().lists[0]}
 ${li(s.concerns)}
 
-## 내가 약속한 것
+## 약속·합의한 것
 ${li(s.promises)}
 
 ## 후속 조치
@@ -684,7 +724,7 @@ ${(s.followups||[]).map(x=>`- [ ] ${x}`).join("\n")||"- 없음"}
 ## 상대 프로파일
 - 성향: ${(s.persona||[]).join(", ")}
 - 기분 흐름: ${s.moodFlow||""}
-- 다음 상담 팁: ${s.nextTip||""}
+- 다음 대화 팁: ${s.nextTip||""}
 
 ## 받은 쪽지
 ${S.notes.length?S.notes.map(n=>`- (${n.t}) **${n.kind}** ${n.trigger?`“${n.trigger}” → `:""}${n.head}`).join("\n"):"- 없음"}
@@ -725,7 +765,7 @@ function openSheet(title,body,btns){
 }
 function closeSheet(){$("#overlay").hidden=true}
 function showNote(md,file,saved){
-  openSheet("상담 정리 완료",`<p class="small">${saved?"옵시디언 볼트 폴더에 저장했습니다.":"이 기기에 기억해 두었습니다. 같은 이름으로 다시 상담하면 비서가 참고합니다."}</p><pre id="mdOut">${esc(md)}</pre>`,[
+  openSheet("정리 완료",`<p class="small">${saved?"옵시디언 볼트 폴더에 저장했습니다.":"이 기기에 기억해 두었습니다. 같은 이름으로 다시 상담하면 비서가 참고합니다."}</p><pre id="mdOut">${esc(md)}</pre>`,[
     ["복사",copyMd],["파일로 저장",()=>download(file,md)],["닫기",closeSheet,"primary"]]);
 }
 async function copyMd(ev){const t=$("#mdOut").textContent;try{await navigator.clipboard.writeText(t);ev.target.textContent="복사됨"}catch(_){const r=document.createRange();r.selectNodeContents($("#mdOut"));const s=getSelection();s.removeAllRanges();s.addRange(r);ev.target.textContent="선택됨"}}
@@ -771,7 +811,7 @@ function saveSettings(){
 $("#setBtn").addEventListener("click",()=>openSettings(false));
 
 /* ---------------- boot ---------------- */
-refreshNames(); renderScript(); renderBrief(); renderNotes();
+refreshNames(); try{$("#pType").value=LS.get("lastType","consult")}catch(_){}; renderScript(); renderBrief(); renderNotes();
 if(!SR&&listenMode()==="web") $("#hint").innerHTML='<span class="err">이 브라우저는 연속 받아쓰기를 지원하지 않습니다. 크롬으로 열어 주세요.</span>';
 else if(!cfg.gkey) $("#hint").textContent="처음 한 번 '설정'에서 제미나이 무료 키를 넣어 주세요. 그다음부터는 상담 시작만 누르면 됩니다.";
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
