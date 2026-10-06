@@ -27,7 +27,8 @@
   --warn:#e6b25a; --warn-soft:#352914; --ok:#6fc28f; --note-bg:#1d2329; color-scheme:dark}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html,body{height:100%;margin:0}
+html,body{height:100%;margin:0;overscroll-behavior-y:none}
+.scroll{overscroll-behavior:contain}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;padding:env(safe-area-inset-top,0) 12px env(safe-area-inset-bottom,0)}
 .app{height:100%;display:flex;flex-direction:column;gap:8px;padding-block:8px;max-width:1400px;margin:0 auto}
 header{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -179,7 +180,7 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.5</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.6</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -761,11 +762,32 @@ $("#setup").addEventListener("submit",e=>{
   const ty=$("#pType").value; const nm=$("#pName").value.trim(); S.setup={type:ty,name:nm,people:nm.split(/[,，、]/).map(x=>x.trim()).filter(Boolean).slice(0,10),role:MODES[ty].partner,purpose:$("#pPurpose").value.trim()}; LS.set("lastType",ty);
   matchMemory();
   Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,mon:null,notes:[],moods:[],analyzedUpTo:0,lastRun:0,startedAt:new Date().toISOString()});
+  beginLive();
+});
+function beginLive(){
   $("#setup").hidden=true; $("#controls").hidden=false; $("#pauseBtn").textContent="일시정지";
   $("#hint").textContent="폰은 화면을 켜 둔 채 두 사람 사이에 놓아 주세요. 틀린 이름표는 누르면 바뀝니다."; setTimeout(()=>{if(S.live)$("#hint").classList.add("live-hide")},8000);
   setStatus("듣는 중 · "+(S.setup.name||S.setup.role),"live");
-  seenNotes=new Set(); renderScript(); renderBrief(); renderNotes(); startListen(); keepAwake();
-});
+  seenNotes=new Set(S.notes.map(n=>n.id)); renderScript(); renderBrief(); renderNotes(); startListen(); keepAwake(); saveDraft();
+}
+/* ---------- 새로고침·실수로 닫아도 대화가 사라지지 않게: 계속 임시 저장 ---------- */
+function saveDraft(){ if(!S.live&&!S.lines.length) return; LS.set("draft",{setup:S.setup,lines:S.lines,notes:S.notes,mon:S.mon,moods:S.moods,startedAt:S.startedAt,analyzedUpTo:S.analyzedUpTo,noteSeq,savedAt:Date.now()}) }
+setInterval(()=>{ if(S.live) saveDraft() },3000);
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden"&&S.live) saveDraft() });
+window.addEventListener("pagehide",()=>{ if(S.live) saveDraft() });
+window.addEventListener("beforeunload",e=>{ if(S.live){ saveDraft(); e.preventDefault(); e.returnValue="" } });
+function restoreDraft(d){
+  Object.assign(S,{setup:d.setup,lines:d.lines||[],notes:d.notes||[],mon:d.mon||null,moods:d.moods||[],startedAt:d.startedAt,analyzedUpTo:d.analyzedUpTo||0,live:true,paused:false,interim:"",cards:[],last:null,lastRun:0});
+  noteSeq=d.noteSeq||S.notes.length; $("#pName").value=d.setup?.name||""; try{$("#pType").value=d.setup?.type||"consult"}catch(_){}; matchMemory();
+}
+function checkDraft(){
+  const d=LS.get("draft",null); if(!d||!(d.lines||[]).length) return;
+  const at=new Date(d.savedAt||Date.now()).toTimeString().slice(0,5);
+  openSheet("끝나지 않은 대화가 있습니다",`<p>${esc(d.setup?.name||MODES[d.setup?.type]?.label||"대화")} · ${d.lines.length}줄 · 마지막 저장 ${at}</p><p class="small">새로고침되거나 창이 닫혀도 대화는 3초마다 임시 저장됩니다.</p>`,[
+    ["버리기",()=>{LS.set("draft",null);closeSheet()}],
+    ["정리만 하기",()=>{closeSheet();restoreDraft(d);S.live=true;finish()}],
+    ["이어서 하기",()=>{closeSheet();restoreDraft(d);beginLive()},"primary"]]);
+}
 $("#endBtn").addEventListener("click",()=>{
   openSheet("대화를 마칠까요?",`<p>${S.lines.length}줄을 정리해서 기억해 둡니다.</p>`,[["계속하기",closeSheet],["종료·정리",finish,"primary"]]);
 });
@@ -798,6 +820,7 @@ JSON 하나만 출력:
   setStatus(autoSaved?"볼트에 저장됨":"정리 완료","");
   $("#setup").hidden=false; $("#controls").hidden=true; $("#hint").classList.remove("live-hide");
   $("#hint").textContent="대화 시작을 누르면 마이크가 계속 켜져서 끝날 때까지 받아 적습니다.";
+  LS.set("draft",null);
   showNote(md,file,autoSaved);
 }
 function toMarkdown(s){
@@ -923,7 +946,7 @@ function saveSettings(){
 $("#setBtn").addEventListener("click",()=>openSettings(false));
 
 /* ---------------- boot ---------------- */
-refreshNames(); try{$("#pType").value=LS.get("lastType","consult")}catch(_){}; renderScript(); renderBrief(); renderNotes();
+checkDraft(); refreshNames(); try{$("#pType").value=LS.get("lastType","consult")}catch(_){}; renderScript(); renderBrief(); renderNotes();
 if(!SR&&listenMode()==="web") $("#hint").innerHTML='<span class="err">이 브라우저는 연속 받아쓰기를 지원하지 않습니다. 크롬으로 열어 주세요.</span>';
 else if(!cfg.gkey) $("#hint").textContent="처음 한 번 '설정'에서 제미나이 무료 키를 넣어 주세요. 그다음부터는 상담 시작만 누르면 됩니다.";
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
