@@ -15,7 +15,7 @@
 :root{
   --bg:#eef1f3; --paper:#fff; --ink:#18232d; --muted:#5f6d78; --line:#d5dce1;
   --seal:#b3261e; --seal-soft:#f7e3e1; --me:#1f4e79; --me-soft:#e3edf6; --other:#3d5a3a; --other-soft:#e6efe4;
-  --warn:#9a6200; --warn-soft:#fbefd9; --ok:#2e7d4f;
+  --warn:#9a6200; --warn-soft:#fbefd9; --ok:#2e7d4f; --note-bg:#fffdf6;
   --f-display:"Noto Serif KR","Nanum Myeongjo",serif;
   --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
   --f-mono:"IBM Plex Mono",ui-monospace,monospace;
@@ -24,7 +24,7 @@
 @media (prefers-color-scheme: dark){:root{
   --bg:#11171c; --paper:#182128; --ink:#e6ebef; --muted:#93a1ac; --line:#2c3a44;
   --seal:#e5675c; --seal-soft:#3a2120; --me:#8fbbe6; --me-soft:#1d2e3e; --other:#a5c99d; --other-soft:#1f2d1e;
-  --warn:#e6b25a; --warn-soft:#352914; --ok:#6fc28f; color-scheme:dark}}
+  --warn:#e6b25a; --warn-soft:#352914; --ok:#6fc28f; --note-bg:#1d2329; color-scheme:dark}}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{height:100%;margin:0}
@@ -49,8 +49,10 @@ button:disabled{opacity:.45;cursor:default}
 label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);flex:1 1 150px;min-width:0}
 input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:8px 9px;width:100%}
 .memo-chip{font-size:12.5px;color:var(--me);background:var(--me-soft);border-radius:99px;padding:3px 10px;width:100%}
-.split{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1.1fr;gap:8px}
-@media (max-width:760px){.split{grid-template-columns:1fr 1fr;gap:6px} body{padding-left:8px;padding-right:8px} .pane-h{padding:6px 8px} .scroll{padding:8px} .line{grid-template-columns:1fr;gap:1px} .line p{font-size:13.5px} .who{justify-self:start}}
+.split{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1.35fr .95fr;grid-template-areas:"script notes mon";gap:8px}
+.p-script{grid-area:script}.p-notes{grid-area:notes}.p-mon{grid-area:mon}
+@media (max-width:1000px){.split{grid-template-columns:1.25fr 1fr;grid-template-rows:34% 1fr;grid-template-areas:"script mon" "notes mon"}}
+@media (max-width:760px){.split{gap:6px} body{padding-left:8px;padding-right:8px} .pane-h{padding:6px 8px} .scroll{padding:8px} .line{grid-template-columns:1fr;gap:1px} .line p{font-size:13.5px} .who{justify-self:start}}
 .mon{display:flex;flex-direction:column;gap:8px}
 .tile{border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
 .tile h3{margin:0 0 5px;font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.05em;display:flex;justify-content:space-between;gap:6px}
@@ -71,11 +73,23 @@ input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid
 .tile ul{margin:0;padding-left:16px;font-size:13px}
 .tile ul.sig{padding-left:0}
 @media (max-width:760px){.stages i{font-size:9.5px;letter-spacing:-.04em}}
-.drawer{position:fixed;left:0;right:0;bottom:0;max-height:62%;max-height:62dvh;background:var(--paper);border-top:2px solid var(--seal);border-radius:14px 14px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.25);display:flex;flex-direction:column;z-index:4;padding-bottom:env(safe-area-inset-bottom,0)}
-.drawer .scroll{padding:10px 14px}
-.drawer-h{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--line)}
-.drawer-h b{font-family:var(--f-display);font-size:15px}
-.drawer-h .r{margin-left:auto;display:flex;gap:6px}
+.note{border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:8px;padding:8px 10px;background:var(--note-bg);display:flex;flex-direction:column;gap:4px}
+.note.k-answer{border-left-color:var(--me)} .note.k-counter{border-left-color:var(--seal)} .note.k-fact{border-left-color:var(--other)} .note.k-say{border-left-color:var(--seal);border-color:var(--seal)}
+.note.pinned{box-shadow:0 0 0 2px var(--warn) inset}
+.note .nh{display:flex;gap:6px;align-items:center;font-size:11px;color:var(--muted);flex-wrap:wrap}
+.note .kind{font-weight:600;letter-spacing:.04em;color:var(--ink)}
+.note .trig{flex:1 1 100%;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.note .nb{margin-left:auto;display:flex;gap:2px}
+.note .nb button{border:none;background:transparent;padding:2px 6px;font-size:13px;color:var(--muted)}
+.note .head{font-family:var(--f-display);font-size:16.5px;font-weight:600;line-height:1.4;text-wrap:pretty}
+.note ul{margin:0;padding-left:16px;font-size:13.5px}
+.note .facts{font-size:12.5px;color:var(--muted);border-top:1px dashed var(--line);padding-top:4px}
+.note .facts b{color:var(--ink);font-weight:600}
+.note.new{animation:slip .5s ease-out, glow 2.2s ease-out}
+@keyframes slip{from{transform:translateY(-10px);opacity:.2}to{transform:none;opacity:1}}
+@keyframes glow{0%{background:var(--warn-soft)}100%{background:var(--note-bg)}}
+@media (prefers-reduced-motion:reduce){.note.new{animation:none}}
+@media (max-width:760px){.note .head{font-size:15px} header button{padding:5px 9px;font-size:13px} h1{font-size:17px} .live-hide{display:none}}
 button.ask{background:var(--seal);border-color:var(--seal);color:#fff;font-weight:600;padding:9px 16px}
 .pane{background:var(--paper);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;min-height:0;min-width:0}
 .pane-h{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
@@ -149,7 +163,7 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.0</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.1</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 상담</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -165,11 +179,15 @@ a{color:var(--me)}
   </form>
 
   <div class="split">
-    <section class="pane" aria-label="속기록">
+    <section class="pane p-script" aria-label="속기록">
       <div class="pane-h"><b>속기록</b><span id="lineCount">0줄</span><span class="r"><span class="badge" id="exL">예시</span></span></div>
       <div class="scroll" id="script"></div>
     </section>
-    <section class="pane" aria-label="상황판">
+    <section class="pane p-notes" aria-label="비서실 쪽지">
+      <div class="pane-h"><b>비서실 쪽지</b><span id="noteCount"></span><span class="thinking" id="noteThinking"></span><span class="r"><span class="badge" id="exN">예시</span></span></div>
+      <div class="scroll" id="notes"></div>
+    </section>
+    <section class="pane p-mon" aria-label="상황판">
       <div class="pane-h"><b>상황판</b><span class="thinking" id="thinking"></span><span class="r"><span class="badge" id="exR">예시</span></span></div>
       <div class="scroll" id="brief"></div>
     </section>
@@ -183,17 +201,14 @@ a{color:var(--me)}
       <button type="button" data-spk="other" aria-pressed="false">상대</button>
     </div>
     <button id="pauseBtn">일시정지</button>
-    <button id="askBtn" class="ask" title="지금 할 말을 비서에게 묻기">💡 조언 받기</button>
+    <button id="askBtn" class="ask" title="지금 할 말을 쪽지로 받기">💡 지금 할 말</button>
     <span class="grow"></span>
     <button class="danger" id="endBtn">종료·정리</button>
   </div>
-  <div class="hint" id="hint">상담 시작을 누르면 마이크가 계속 켜져서 끝날 때까지 받아 적습니다. 화자는 비서가 나눕니다. 이름표를 누르면 바뀝니다.</div>
+  <div class="hint live-hide-target" id="hint">상담 시작을 누르면 마이크가 계속 켜져서 끝날 때까지 받아 적습니다. 화자는 비서가 나눕니다. 이름표를 누르면 바뀝니다.</div>
 </div>
 
-<section class="drawer" id="drawer" hidden aria-label="비서 조언">
-  <div class="drawer-h"><b>비서 조언</b><span class="thinking" id="advThinking"></span><span class="r"><button id="advMore" class="ask">💡 새 조언</button><button id="advClose">닫기</button></span></div>
-  <div class="scroll" id="advList"></div>
-</section>
+
 
 <div class="overlay" id="overlay" hidden>
   <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
@@ -212,7 +227,7 @@ const LS={get(k,d){try{const v=localStorage.getItem("fs_"+k);return v==null?d:JS
 
 const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12,stt:"auto",chunk:15},LS.get("cfg",{}));
 if(!/^(auto|gemini)/.test(cfg.gmodel)) cfg.gmodel="auto";
-const S={mon:null,live:false,paused:false,mode:"auto",lines:[],interim:"",cards:[],last:null,moods:[],setup:{},startedAt:null,memory:[],analyzedUpTo:0,busy:false,lastRun:0};
+const S={notes:[],mon:null,live:false,paused:false,mode:"auto",lines:[],interim:"",cards:[],last:null,moods:[],setup:{},startedAt:null,memory:[],analyzedUpTo:0,busy:false,lastRun:0};
 
 /* ---------------- example state ---------------- */
 const EX_LINES=[
@@ -283,22 +298,48 @@ function renderBrief(){
     <div class="tile"><h3>성향</h3><div class="chips">${(m.persona||[]).map(p=>`<span class="chip">${esc(p)}</span>`).join("")||'<span class="small">파악 중</span>'}</div></div>
   </div>`;
 }
-/* ---------- 조언 서랍: 누를 때만 새로 나오고, 스스로 바뀌지 않음 ---------- */
-function adviceHTML(c,latest){
-  const q=[].concat(c.search||[]).filter(Boolean).slice(0,3);
-  return `<article class="advice${latest?" latest":""}">
-    <div class="say-card"><div class="k">이렇게 말씀하십시오<span class="at">${c._t||""}</span></div>
-      <div class="q">“${esc(c.say)}”</div><div class="why">${esc(c.why)}</div>
-      ${(c.alt||[]).length?`<ul class="alt">${c.alt.map(a=>`<li>${esc(a)}</li>`).join("")}</ul>`:""}</div>
-    ${c.caution?`<div class="caution">⚠ ${esc(c.caution)}</div>`:""}
-    ${(c.evidence||[]).length?`<div class="box"><h3>바로 쓸 근거</h3><ul class="ev">${c.evidence.map(e=>`<li><b>${esc(e.point)}</b> — ${esc(e.detail)}</li>`).join("")}</ul></div>`:""}
-    ${q.length?`<div class="links">${q.map(x=>`<a href="https://search.naver.com/search.naver?query=${encodeURIComponent(x)}" target="_blank" rel="noopener">🔎 ${esc(x)}</a>`).join("")}</div>`:""}
+/* ---------- 비서실 쪽지: 청문회 참모처럼, 상대 말에 맞춰 쪽지가 쌓임. 한 번 온 쪽지는 바뀌지 않음 ---------- */
+const KIND={"질문 답변":"answer","반론 대응":"counter","사실 확인":"fact","주의":"warn","기회":"fact","할 말":"say"};
+const EX_NOTES=[
+ {id:"x1",t:"19:02",kind:"질문 답변",trigger:"수학 4등급이면 많이 떨어진 건가요?",head:"5등급제에서 4등급은 상위 66~90% 구간입니다.",points:["고1부터 5등급제 적용","같은 등급 안의 원점수 위치가 중요"],facts:["누적 1등급 10% · 2등급 34% · 3등급 66% · 4등급 90%"],search:"고교 내신 5등급제 비율"},
+ {id:"x2",t:"19:03",kind:"반론 대응",trigger:"다른 학원 옮겨야 하나 고민 중",head:"옮기실지는 이번 시험 원인을 같이 본 뒤 정하셔도 늦지 않습니다.",points:["틀린 유형부터 확인 제안","다른 학원 비교는 하지 않기"],facts:[],search:""}];
+function noteHTML(n,isNew){
+  const k=KIND[n.kind]||"warn";
+  return `<article class="note k-${k}${n.pinned?" pinned":""}${isNew?" new":""}" data-id="${n.id}">
+    <div class="nh"><span class="kind">${esc(n.kind||"쪽지")}</span><span>${esc(n.t||"")}</span>
+      <span class="nb"><button data-act="pin" title="고정">${n.pinned?"📌":"📍"}</button><button data-act="del" title="치우기">✕</button></span>
+      ${n.trigger?`<span class="trig">“${esc(n.trigger)}”</span>`:""}</div>
+    <div class="head">${esc(n.head)}</div>
+    ${(n.points||[]).length?`<ul>${n.points.map(x=>`<li>${esc(x)}</li>`).join("")}</ul>`:""}
+    ${(n.facts||[]).length?`<div class="facts"><b>근거</b> ${n.facts.map(esc).join(" · ")}</div>`:""}
+    ${n.caution?`<div class="caution" style="font-size:13px;padding:5px 8px">⚠ ${esc(n.caution)}</div>`:""}
+    ${n.search?`<div class="links"><a href="https://search.naver.com/search.naver?query=${encodeURIComponent(n.search)}" target="_blank" rel="noopener">🔎 ${esc(n.search)}</a></div>`:""}
   </article>`;
 }
-function renderAdvice(){
-  const el=$("#advList");
-  el.innerHTML=S.cards.length?S.cards.map((c,i)=>adviceHTML(c,i===S.cards.length-1)).reverse().join(""):`<p class="empty">아직 받은 조언이 없습니다.</p>`;
-  el.scrollTop=0;
+let seenNotes=new Set();
+function renderNotes(){
+  const el=$("#notes"); const real=S.live||S.lines.length; const list=real?S.notes:EX_NOTES;
+  $("#exN").hidden=!!real; $("#noteCount").textContent=real&&S.notes.length?`${S.notes.length}장`:"";
+  if(!list.length){el.innerHTML=`<p class="empty">상대가 질문하거나 걱정·반론을 꺼내면 비서실이 답변 쪽지를 넣어 드립니다. 바로 할 말이 필요하면 💡 지금 할 말을 누르세요.</p>`;return}
+  const prevH=el.scrollHeight, prevTop=el.scrollTop;
+  const ordered=[...list.filter(n=>n.pinned).reverse(),...list.filter(n=>!n.pinned).reverse()];
+  el.innerHTML=ordered.map(n=>noteHTML(n,real&&!seenNotes.has(n.id))).join("");
+  list.forEach(n=>seenNotes.add(n.id));
+  if(prevTop>40) el.scrollTop=prevTop+(el.scrollHeight-prevH);
+}
+$("#notes").addEventListener("click",e=>{
+  const b=e.target.closest("button[data-act]"); if(!b) return; const id=b.closest(".note").dataset.id;
+  const n=S.notes.find(x=>x.id===id); if(!n) return;
+  if(b.dataset.act==="pin") n.pinned=!n.pinned; else S.notes=S.notes.filter(x=>x!==n);
+  renderNotes();
+});
+let noteSeq=0;
+function addNotes(arr,forcedKind){
+  const t=new Date().toTimeString().slice(0,5);
+  for(const n of (arr||[])){ if(!n||!n.head) continue;
+    S.notes.push({id:"n"+(++noteSeq),t,kind:forcedKind||n.kind||"주의",trigger:n.trigger||"",head:n.head,points:[].concat(n.points||[]).slice(0,3),facts:[].concat(n.facts||[]).slice(0,3),search:n.search||"",caution:n.caution||""}) }
+  if(S.notes.length>60) S.notes=S.notes.filter(n=>n.pinned).concat(S.notes.filter(n=>!n.pinned).slice(-50));
+  renderNotes();
 }
 function setStatus(t,cls){$("#statusText").textContent=t;const s=$("#status");s.classList.toggle("live",cls==="live");s.classList.toggle("paused",cls==="paused")}
 function setThinking(t){$("#thinking").textContent=t||""}
@@ -405,34 +446,41 @@ function scheduleAnalyze(force){
 }
 async function analyze(){
   if(S.busy||!S.lines.length){return}
-  S.busy=true; S.lastRun=Date.now(); const upTo=S.lines.length; setThinking("분석 중…");
+  S.busy=true; S.lastRun=Date.now(); const upTo=S.lines.length; setThinking("분석 중…"); $("#noteThinking").textContent="보는 중…";
+  const newFrom=S.analyzedUpTo<S.lines.length?`L${S.analyzedUpTo+1}부터`:"없음";
   const prompt=`${ctxText()}
 
 음성 받아쓰기로 실시간 기록 중인 대화입니다(오타·끊김 있음). ${SPK_RULE}
 
 ${transcript(40)}
 
-원장이 상황을 한눈에 볼 수 있게 상대의 현재 심리와 대화 상황을 분석하세요. 할 말 제안은 하지 마세요. JSON 하나만 출력:
+원장은 청문회에서 답변하는 장관처럼 상대의 질문·걱정·반론에 답해야 합니다. 당신은 옆에서 상황을 지켜보며 쪽지를 넣어 주는 참모진입니다.
+1) 상대의 현재 심리와 대화 상황을 분석하세요.
+2) 새로 나온 말(${newFrom}) 가운데 상대의 질문·걱정·반론·사실 주장처럼 원장이 답해야 할 것이 있으면 쪽지를 0~2장 쓰세요. 답할 것이 없으면 notes는 빈 배열입니다.
+이미 보낸 쪽지와 같은 주제는 다시 쓰지 마세요. 이미 보낸 쪽지: ${S.notes.slice(-6).map(n=>n.head).join(" / ")||"없음"}
+JSON 하나만 출력:
 {"speakers":{"L번호":"me|other"},
-${MONITOR_SPEC}}`;
+${MONITOR_SPEC},
+${NOTE_SPEC}}`;
   try{
-    const r=parseJSON(await ai(prompt,1400,0.4));
+    const r=parseJSON(await ai(prompt,2200,0.4));
     if(r){
       applySpeakers(r);
       r._t=new Date().toTimeString().slice(0,5); S.mon=r; S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)));
-      S.analyzedUpTo=upTo; renderScript(); renderBrief();
+      S.analyzedUpTo=upTo; renderScript(); renderBrief(); addNotes(r.notes);
     }
     setThinking("");
   }catch(e){apiError(e)}
-  finally{S.busy=false; if(S.live&&S.lines.length>S.analyzedUpTo) scheduleAnalyze()}
+  finally{S.busy=false; $("#noteThinking").textContent=""; if(S.live&&S.lines.length>S.analyzedUpTo) scheduleAnalyze()}
 }
+const NOTE_SPEC=`"notes":[{"kind":"질문 답변|반론 대응|사실 확인|주의|기회","trigger":"쪽지를 쓰게 만든 상대의 말 요약(25자 이내)","head":"원장이 바로 말할 핵심 답 한 문장(존댓말)","points":["뒷받침할 답변 포인트 2~3개, 각 25자 이내"],"facts":["수치·제도·사례 근거. 확실한 것만, 없으면 빈 배열"],"search":"원장이 확인하면 좋을 네이버 검색어 하나 또는 빈 문자열"}]`;
 let advBusy=false;
 async function advise(){
-  $("#drawer").hidden=false; renderAdvice();
+  const th=$("#noteThinking");
   if(advBusy) return;
-  if(!cfg.gkey){$("#advThinking").textContent="설정에서 키를 넣어 주세요";return}
-  if(!S.lines.length){$("#advThinking").textContent="아직 받아쓴 말이 없습니다";return}
-  advBusy=true; $("#advThinking").textContent="생각 중…"; $("#advMore").disabled=true;
+  if(!cfg.gkey){th.textContent="설정에서 키를 넣어 주세요";return}
+  if(!S.lines.length){th.textContent="아직 받아쓴 말이 없습니다";return}
+  advBusy=true; th.textContent="할 말 쓰는 중…"; $("#askBtn").disabled=true;
   const mon=S.mon?`\n지금 상황판: ${S.mon.summary||""} / 상대 기분 ${S.mon.mood?.label||""} / 걱정: ${(S.mon.concerns||[]).join(", ")}`:"";
   const prompt=`${ctxText()}${mon}
 
@@ -440,15 +488,15 @@ async function advise(){
 
 ${transcript(40)}
 
-원장이 대화 주도권을 갖도록 지금 할 다음 한마디를 제안하세요. JSON 하나만 출력:
+원장이 대화 주도권을 갖도록 지금 바로 할 말을 쪽지 한 장으로 쓰세요. JSON 하나만 출력:
 {"speakers":{"L번호":"me|other"},
-${ADVICE_SPEC}}`;
+"trigger":"지금 상황 요약(25자 이내)","head":"원장이 그대로 읽을 다음 한마디(존댓말, 2문장 이내)","points":["흐름이 바뀌면 쓸 대안 또는 이어갈 말(최대 2개)"],"facts":["근거(확실한 것만)"],"search":"확인용 네이버 검색어 또는 빈 문자열","caution":"지금 조심할 점 또는 빈 문자열"}`;
   try{
     const r=parseJSON(await ai(prompt,1200,0.6));
-    if(r){applySpeakers(r); applyAdvice(r); renderScript(); renderAdvice()}
-    $("#advThinking").textContent="";
-  }catch(e){ $("#advThinking").textContent=e.status===429?"무료 한도에 걸렸습니다. 잠시 뒤 다시 눌러 주세요":"조언을 받지 못했습니다" }
-  finally{advBusy=false; $("#advMore").disabled=false}
+    if(r){applySpeakers(r); renderScript(); addNotes([r],"할 말"); $("#notes").scrollTop=0}
+    th.textContent="";
+  }catch(e){ th.textContent=e.status===429?"무료 한도에 걸렸습니다. 잠시 뒤 다시":"쪽지를 받지 못했습니다" }
+  finally{advBusy=false; $("#askBtn").disabled=false}
 }
 /* ---------------- 녹음 + 제미나이 받아쓰기 (폰: 소리 없이 계속 녹음) ---------------- */
 function listenMode(){return cfg.stt==="auto"?(IS_ANDROID||!SR?"audio":"web"):cfg.stt}
@@ -547,8 +595,6 @@ $("#script").addEventListener("click",e=>{const b=e.target.closest("button.who")
   const l=S.lines[+b.dataset.i]; if(!l) return; l.spk=l.spk==="me"?"other":"me"; l.fixed=true; renderScript()});
 document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",()=>{S.mode=b.dataset.spk;document.querySelectorAll(".seg button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)))}));
 $("#askBtn").addEventListener("click",advise);
-$("#advMore").addEventListener("click",advise);
-$("#advClose").addEventListener("click",()=>{$("#drawer").hidden=true});
 $("#pauseBtn").addEventListener("click",()=>{
   if(!S.live) return; S.paused=!S.paused;
   if(S.paused){stopListen(false);setStatus("일시정지","paused");$("#pauseBtn").textContent="다시 듣기"}
@@ -565,11 +611,11 @@ $("#setup").addEventListener("submit",e=>{
   if(!cfg.gkey){openSettings(true);return}
   S.setup={name:$("#pName").value.trim(),role:$("#pRole").value,purpose:$("#pPurpose").value.trim()};
   matchMemory();
-  Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,mon:null,moods:[],analyzedUpTo:0,lastRun:0,startedAt:new Date().toISOString()});
+  Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,mon:null,notes:[],moods:[],analyzedUpTo:0,lastRun:0,startedAt:new Date().toISOString()});
   $("#setup").hidden=true; $("#controls").hidden=false; $("#pauseBtn").textContent="일시정지";
-  $("#hint").textContent="폰은 화면을 켜 둔 채 두 사람 사이에 놓아 주세요. 틀린 이름표는 누르면 바뀝니다.";
+  $("#hint").textContent="폰은 화면을 켜 둔 채 두 사람 사이에 놓아 주세요. 틀린 이름표는 누르면 바뀝니다."; setTimeout(()=>{if(S.live)$("#hint").classList.add("live-hide")},8000);
   setStatus("듣는 중 · "+(S.setup.name||S.setup.role),"live");
-  renderScript(); renderBrief(); startListen(); keepAwake();
+  seenNotes=new Set(); renderScript(); renderBrief(); renderNotes(); startListen(); keepAwake();
 });
 $("#endBtn").addEventListener("click",()=>{
   openSheet("상담을 마칠까요?",`<p>${S.lines.length}줄을 정리해서 기억해 둡니다.</p>`,[["계속하기",closeSheet],["종료·정리",finish,"primary"]]);
@@ -577,7 +623,6 @@ $("#endBtn").addEventListener("click",()=>{
 
 async function finish(){
   const wasAudio=listenMode()==="audio";
-  $("#drawer").hidden=true;
   S.live=false; stopListen(true); clearTimeout(analyzeTimer); try{wake?.release()}catch(_){}
   setStatus("정리 중","");
   openSheet("상담 정리 중",`<p class="thinking">${wasAudio?"마지막 말을 받아쓰고 ":""}대화를 요약하고 있습니다…</p>`,[]);
@@ -602,7 +647,7 @@ JSON 하나만 출력:
   const file=`${localDate(S.startedAt)} ${S.setup.name||"상담"} - ${sum.title||"상담"}.md`.replace(/[\\/:*?"<>|]/g,"_");
   const autoSaved=await saveToVault(file,md);
   setStatus(autoSaved?"볼트에 저장됨":"정리 완료","");
-  $("#setup").hidden=false; $("#controls").hidden=true;
+  $("#setup").hidden=false; $("#controls").hidden=true; $("#hint").classList.remove("live-hide");
   $("#hint").textContent="상담 시작을 누르면 마이크가 계속 켜져서 끝날 때까지 받아 적습니다.";
   showNote(md,file,autoSaved);
 }
@@ -641,8 +686,8 @@ ${(s.followups||[]).map(x=>`- [ ] ${x}`).join("\n")||"- 없음"}
 - 기분 흐름: ${s.moodFlow||""}
 - 다음 상담 팁: ${s.nextTip||""}
 
-## 받은 조언
-${S.cards.length?S.cards.map(c=>`- (${c._t}) ${c.say}`).join("\n"):"- 없음"}
+## 받은 쪽지
+${S.notes.length?S.notes.map(n=>`- (${n.t}) **${n.kind}** ${n.trigger?`“${n.trigger}” → `:""}${n.head}`).join("\n"):"- 없음"}
 
 ## 속기록
 ${S.lines.map(l=>`- **${l.spk==="me"?"나":S.setup.name||"상대"}** (${l.t}) ${l.text}`).join("\n")}
@@ -726,7 +771,7 @@ function saveSettings(){
 $("#setBtn").addEventListener("click",()=>openSettings(false));
 
 /* ---------------- boot ---------------- */
-refreshNames(); renderScript(); renderBrief();
+refreshNames(); renderScript(); renderBrief(); renderNotes();
 if(!SR&&listenMode()==="web") $("#hint").innerHTML='<span class="err">이 브라우저는 연속 받아쓰기를 지원하지 않습니다. 크롬으로 열어 주세요.</span>';
 else if(!cfg.gkey) $("#hint").textContent="처음 한 번 '설정'에서 제미나이 무료 키를 넣어 주세요. 그다음부터는 상담 시작만 누르면 됩니다.";
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
