@@ -26,6 +26,7 @@
   --seal:#e5675c; --seal-soft:#3a2120; --me:#8fbbe6; --me-soft:#1d2e3e; --other:#a5c99d; --other-soft:#1f2d1e;
   --warn:#e6b25a; --warn-soft:#352914; --ok:#6fc28f; color-scheme:dark}}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.55;padding:env(safe-area-inset-top,0) 12px env(safe-area-inset-bottom,0)}
 .app{height:100%;display:flex;flex-direction:column;gap:8px;padding-block:8px;max-width:1400px;margin:0 auto}
@@ -166,10 +167,12 @@ a{color:var(--me)}
 "use strict";
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const localDate=iso=>{const d=iso?new Date(iso):new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
 const LS={get(k,d){try{const v=localStorage.getItem("fs_"+k);return v==null?d:JSON.parse(v)}catch(_){return d}},set(k,v){try{localStorage.setItem("fs_"+k,JSON.stringify(v))}catch(_){}}};
 
-const cfg=Object.assign({key:"",model:"claude-sonnet-5-5",me:"천양진 원장",research:true,interval:10},LS.get("cfg",{}));
-const S={live:false,paused:false,mode:"auto",lines:[],interim:"",cards:[],last:null,moods:[],research:[],setup:{},startedAt:null,memory:[],analyzedUpTo:0,busy:false,lastRun:0,resBusy:false,lastRes:0,doneQueries:new Set()};
+const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12},LS.get("cfg",{}));
+if(!/^(auto|gemini)/.test(cfg.gmodel)) cfg.gmodel="auto";
+const S={live:false,paused:false,mode:"auto",lines:[],interim:"",cards:[],last:null,moods:[],setup:{},startedAt:null,memory:[],analyzedUpTo:0,busy:false,lastRun:0};
 
 /* ---------------- example state ---------------- */
 const EX_LINES=[
@@ -198,7 +201,7 @@ function renderScript(){
 function renderBrief(){
   const el=$("#brief"); const real=S.live||S.lines.length; const c=S.last||(real?null:EX_CARD);
   $("#exR").hidden=!!real;
-  if(!c&&!S.research.length){el.innerHTML=`<p class="empty">상대가 말을 시작하면 비서가 다음 한마디, 근거, 상대 기분을 계속 올립니다.</p>`;return}
+  if(!c){el.innerHTML=`<p class="empty">상대가 말을 시작하면 비서가 다음 한마디, 근거, 상대 기분을 계속 올립니다.</p>`;return}
   let h="";
   if(c){
     const lv=Math.max(1,Math.min(5,+c.mood?.level||3));
@@ -216,10 +219,8 @@ function renderBrief(){
      </div>
      ${(c.evidence||[]).length?`<div class="box"><h3>바로 쓸 근거</h3><ul class="ev">${c.evidence.map(e=>`<li><b>${esc(e.point)}</b> — ${esc(e.detail)}</li>`).join("")}</ul></div>`:""}`;
   }
-  if(S.research.length||S.resBusy){
-    h+=`<div class="box"><h3>검색 자료 ${S.resBusy?'<span class="thinking">찾는 중…</span>':""}</h3>${S.research.slice().reverse().map(r=>`
-      <div class="res"><div class="qq">🔎 ${esc(r.q)}</div><p>${esc(r.text)}</p>
-      ${r.links.length?`<div class="links">${r.links.slice(0,4).map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.title||l.url)}</a>`).join("")}</div>`:""}</div>`).join("")}</div>`;
+  if(c&&[].concat(c.search||[]).filter(Boolean).length){
+    h+=`<div class="box"><h3>바로 확인할 자료</h3><div class="links">${[].concat(c.search).filter(Boolean).slice(0,3).map(q=>`<a href="https://search.naver.com/search.naver?query=${encodeURIComponent(q)}" target="_blank" rel="noopener">🔎 ${esc(q)}</a>`).join("")}</div></div>`;
   }
   if(S.cards.length>1) h+=`<details class="hist"><summary>앞서 드린 제안 ${S.cards.length-1}개</summary><ol>${S.cards.slice(0,-1).reverse().map(x=>`<li>${esc(x.say)}</li>`).join("")}</ol></details>`;
   el.innerHTML=h;
@@ -263,26 +264,39 @@ function addLine(text){
 }
 
 /* ---------------- Claude API ---------------- */
-async function claude(body){
-  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{
-    "content-type":"application/json","x-api-key":cfg.key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify(body)});
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok){const m=j?.error?.message||("HTTP "+r.status); const err=new Error(m); err.status=r.status; throw err}
-  return j;
+const FALLBACK=["gemini-flash-latest","gemini-3.5-flash","gemini-flash-lite-latest","gemini-3.5-flash-lite"];
+let modelOrder=null;
+function models(){ if(cfg.gmodel!=="auto") return [cfg.gmodel,...FALLBACK.filter(m=>m!==cfg.gmodel)]; return modelOrder||FALLBACK; }
+async function ai(prompt,maxTokens){
+  let lastErr=null;
+  for(const m of models()){
+    try{
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,{method:"POST",
+        headers:{"content-type":"application/json","x-goog-api-key":cfg.gkey},
+        body:JSON.stringify({contents:[{role:"user",parts:[{text:prompt}]}],generationConfig:{responseMimeType:"application/json",maxOutputTokens:maxTokens,temperature:0.6}})});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok){const e=new Error(j?.error?.message||("HTTP "+r.status));e.status=r.status;
+        if(r.status===404||r.status===429||r.status===503){lastErr=e;continue}
+        throw e}
+      if(cfg.gmodel==="auto"&&m!==models()[0]) modelOrder=[m,...FALLBACK.filter(x=>x!==m)];
+      return (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text||"").join("");
+    }catch(e){ if(e.status) {if(e.status===404||e.status===429||e.status===503){lastErr=e;continue} throw e} lastErr=e }
+  }
+  throw lastErr||new Error("응답 없음");
 }
-function textOf(j){return (j.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("")}
+/* 상대 이름은 외부로 보내지 않음 */
+function mask(t){const n=S.setup.name; if(!n) return t; let o=String(t); for(const part of [n,...n.split(/\s+/).filter(x=>x.length>=2)]) o=o.split(part).join("상대"); return o}
 function parseJSON(t){const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<a)return null;try{return JSON.parse(t.slice(a,b+1))}catch(_){return null}}
 function apiError(e){
-  if(e.status===401) $("#hint").innerHTML='<span class="err">API 키가 맞지 않습니다. 설정에서 키를 다시 넣어 주세요. 받아쓰기는 계속됩니다.</span>';
-  else if(e.status===429||e.status===529) setThinking("요청이 몰려 잠시 쉬는 중");
-  else if(e.status===400&&/credit|balance/i.test(e.message)) $("#hint").innerHTML='<span class="err">API 크레딧이 부족합니다. 콘솔에서 충전하면 바로 다시 조언합니다.</span>';
+  if(e.status===400&&/API key|API_KEY/i.test(e.message)||e.status===401||e.status===403) $("#hint").innerHTML='<span class="err">제미나이 키가 맞지 않습니다. 설정에서 키를 다시 넣어 주세요. 받아쓰기는 계속됩니다.</span>';
+  else if(e.status===429) setThinking("무료 한도에 걸려 잠시 쉬는 중");
   else setThinking("조언 실패: "+e.message.slice(0,60));
 }
 
-function transcript(n){return S.lines.slice(-n).map(l=>`[${l.id}][${l.spk==="me"?"나":l.spk==="other"?"상대":"미정"}] ${l.text}`).join("\n")}
+function transcript(n){return S.lines.slice(-n).map(l=>`[${l.id}][${l.spk==="me"?"나":l.spk==="other"?"상대":"미정"}] ${mask(l.text)}`).join("\n")}
 let analyzeTimer=null;
 function scheduleAnalyze(force){
-  if(!cfg.key) return;
+  if(!cfg.gkey) return;
   clearTimeout(analyzeTimer);
   const since=Date.now()-S.lastRun, gap=cfg.interval*1000;
   const newCount=S.lines.length-S.analyzedUpTo;
@@ -294,7 +308,7 @@ async function analyze(){
   S.busy=true; S.lastRun=Date.now(); const upTo=S.lines.length; setThinking("분석 중…");
   const mem=S.memory.length?`\n같은 상대와의 지난 상담(오래된 순):\n${S.memory.map(m=>`- ${m.date}: ${m.summary}${m.tip?` / 다음 팁: ${m.tip}`:""}`).join("\n")}`:"";
   const prev=S.last?`\n직전에 제안한 말: "${S.last.say}" (같은 말 반복 금지, 대화가 진행된 만큼 다음 단계로)`:"";
-  const prompt=`당신은 학원 원장의 실시간 상담 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 상대: ${S.setup.name||"이름 미상"}(${S.setup.role}). 상담 목적: ${S.setup.purpose||"미정"}.${mem}${prev}
+  const prompt=`당신은 학원 원장의 실시간 상담 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 상대: ${S.setup.role}. 상담 목적: ${mask(S.setup.purpose)||"미정"}.${mask(mem)}${prev}
 
 음성 받아쓰기로 실시간 기록 중인 대화입니다(오타·끊김 있음). [미정] 줄은 말투와 내용으로 화자를 판별하세요(설명·제안·질문으로 이끄는 쪽=원장, 고민·사정을 말하는 쪽=상대).
 
@@ -306,49 +320,29 @@ ${transcript(40)}
 "why":"이 말이 좋은 이유 한 줄",
 "alt":["흐름이 바뀌면 쓸 대안(최대 2개)"],
 "evidence":[{"point":"근거 핵심","detail":"제도·수치·사례 한두 문장. 확실한 것만"}],
-"search":"웹에서 최신 자료를 확인하면 도움이 될 검색어 하나. 필요 없으면 빈 문자열",
+"search":["원장이 확인하면 좋을 네이버 검색어(최대 3개)"],
 "mood":{"label":"상대의 지금 기분 두세 단어","level":1~5,"signal":"그렇게 본 발화"},
 "persona":["상대 성향 태그 3~5개"],
 "caution":"원장이 지금 조심할 점. 없으면 빈 문자열",
 "stage":"도입|탐색|제안|합의|마무리"}`;
   try{
-    const j=await claude({model:cfg.model,max_tokens:1000,messages:[{role:"user",content:prompt}]});
-    const r=parseJSON(textOf(j));
+    const r=parseJSON(await ai(prompt,1400));
     if(r){
       for(const [id,spk] of Object.entries(r.speakers||{})){const l=S.lines.find(x=>x.id===id); if(l&&!l.fixed&&(spk==="me"||spk==="other")) l.spk=spk}
       if(r.say){S.last=r;S.cards.push(r);S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)))}
       S.analyzedUpTo=upTo; renderScript(); renderBrief();
-      if(cfg.research&&r.search) research(r.search);
     }
     setThinking("");
   }catch(e){apiError(e)}
   finally{S.busy=false; if(S.live&&S.lines.length>S.analyzedUpTo) scheduleAnalyze()}
 }
-async function research(q){
-  q=String(q).trim(); if(!q||S.resBusy||S.doneQueries.has(q)||Date.now()-S.lastRes<35000) return;
-  S.resBusy=true; S.lastRes=Date.now(); S.doneQueries.add(q); renderBrief();
-  try{
-    const j=await claude({model:"claude-sonnet-5-5",max_tokens:700,
-      tools:[{type:"web_search_20250305",name:"web_search",max_uses:2,user_location:{type:"approximate",city:"Changwon",region:"Gyeongsangnam-do",country:"KR",timezone:"Asia/Seoul"}}],
-      messages:[{role:"user",content:`학원 원장이 학부모·학생 상담 중에 바로 근거로 쓸 수 있게 "${q}"를 검색해서 핵심만 한국어로 3줄 이내 정리해 주세요. 숫자·제도명·시행 시기는 출처 기준으로 정확히. 머리말 없이 본문만.`}]});
-    const links=[]; const seen=new Set();
-    for(const b of j.content||[]){
-      if(b.type==="text"&&b.citations) for(const c of b.citations){if(c.url&&!seen.has(c.url)){seen.add(c.url);links.push({url:c.url,title:c.title})}}
-      if(b.type==="web_search_tool_result"&&Array.isArray(b.content)) for(const c of b.content){if(c.url&&!seen.has(c.url)&&links.length<6){seen.add(c.url);links.push({url:c.url,title:c.title})}}
-    }
-    const text=textOf(j).trim();
-    if(text) S.research.push({q,text,links});
-  }catch(e){ if(e.status!==429) S.research.push({q,text:"검색하지 못했습니다: "+e.message.slice(0,80),links:[]}) }
-  finally{S.resBusy=false; renderBrief()}
-}
-
 /* ---------------- memory ---------------- */
 function sessions(){return LS.get("sessions",[])}
 function refreshNames(){const ns=[...new Set(sessions().map(s=>s.name).filter(Boolean))];$("#names").innerHTML=ns.map(n=>`<option value="${esc(n)}">`).join("")}
 function matchMemory(){
   const n=$("#pName").value.trim(), chip=$("#memoChip");
   const hits=n?sessions().filter(s=>s.name===n).slice(0,3).reverse():[];
-  S.memory=hits.map(h=>({date:(h.endedAt||"").slice(0,10),summary:h.summary?.oneLine||"",tip:h.summary?.nextTip||""}));
+  S.memory=hits.map(h=>({date:localDate(h.endedAt),summary:h.summary?.oneLine||"",tip:h.summary?.nextTip||""}));
   chip.hidden=!hits.length; chip.textContent=`지난 상담 ${hits.length}건을 기억하고 있습니다. 비서가 참고합니다.`;
 }
 $("#pName").addEventListener("change",matchMemory); $("#pName").addEventListener("blur",matchMemory);
@@ -371,10 +365,10 @@ document.addEventListener("visibilitychange",()=>{if(document.visibilityState===
 $("#setup").addEventListener("submit",e=>{
   e.preventDefault(); if(S.live) return;
   if(!SR){openSheet("이 브라우저는 받아쓰기를 지원하지 않습니다",`<p>크롬(Chrome)으로 이 주소를 열어 주세요. 삼성 인터넷이나 사파리는 연속 받아쓰기를 지원하지 않습니다.</p>`,[["닫기",closeSheet]]);return}
-  if(!cfg.key){openSettings(true);return}
+  if(!cfg.gkey){openSettings(true);return}
   S.setup={name:$("#pName").value.trim(),role:$("#pRole").value,purpose:$("#pPurpose").value.trim()};
   matchMemory();
-  Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,moods:[],research:[],analyzedUpTo:0,lastRun:0,lastRes:0,doneQueries:new Set(),startedAt:new Date().toISOString()});
+  Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,moods:[],analyzedUpTo:0,lastRun:0,startedAt:new Date().toISOString()});
   $("#setup").hidden=true; $("#controls").hidden=false; $("#pauseBtn").textContent="일시정지";
   $("#hint").textContent="폰은 화면을 켜 둔 채 두 사람 사이에 놓아 주세요. 틀린 이름표는 누르면 바뀝니다.";
   setStatus("듣는 중 · "+(S.setup.name||S.setup.role),"live");
@@ -389,23 +383,23 @@ async function finish(){
   setStatus("정리 중","");
   openSheet("상담 정리 중",`<p class="thinking">대화를 요약하고 있습니다…</p>`,[]);
   let sum=null;
-  if(S.lines.length&&cfg.key){
+  if(S.lines.length&&cfg.gkey){
     try{
-      const j=await claude({model:cfg.model,max_tokens:2500,messages:[{role:"user",content:`학원 원장 ${cfg.me}('나')과 ${S.setup.name||"상대"}(${S.setup.role})의 상담 받아쓰기 기록입니다(오타 있음). 목적: ${S.setup.purpose||"미정"}.
+      const out=await ai(`학원 원장('나')과 상대(${S.setup.role})의 상담 받아쓰기 기록입니다(오타 있음). 목적: ${mask(S.setup.purpose)||"미정"}.
 ${transcript(600)}
 JSON 하나만 출력:
 {"title":"노트 제목(20자 이내)","oneLine":"한 줄 요약","summary":"핵심 요약 3~5문장",
 "points":["주요 논의"],"concerns":["상대의 걱정·요구"],"promises":["원장이 약속한 것"],
 "followups":["다음에 할 일(누가·언제)"],"persona":["상대 성향 태그"],"moodFlow":"상담 중 기분 변화 한 줄",
-"nextTip":"다음 상담 때 원장이 기억할 조언","tags":["옵시디언 태그(공백 없이, # 없이) 4~7개"]}`}]});
-      sum=parseJSON(textOf(j));
+"nextTip":"다음 상담 때 원장이 기억할 조언","tags":["옵시디언 태그(공백 없이, # 없이) 4~7개"]}`,3000);
+      sum=parseJSON(out);
     }catch(e){}
   }
   sum=sum||{title:"상담 기록",oneLine:"",summary:"",points:[],concerns:[],promises:[],followups:[],persona:[],moodFlow:"",nextTip:"",tags:[]};
   const md=toMarkdown(sum);
   const rec2={name:S.setup.name,role:S.setup.role,purpose:S.setup.purpose,startedAt:S.startedAt,endedAt:new Date().toISOString(),summary:sum,markdown:md};
   const all=sessions(); all.unshift(rec2); LS.set("sessions",all.slice(0,300)); refreshNames();
-  const file=`${(S.startedAt||"").slice(0,10)} ${S.setup.name||"상담"} - ${sum.title||"상담"}.md`.replace(/[\\/:*?"<>|]/g,"_");
+  const file=`${localDate(S.startedAt)} ${S.setup.name||"상담"} - ${sum.title||"상담"}.md`.replace(/[\\/:*?"<>|]/g,"_");
   const autoSaved=await saveToVault(file,md);
   setStatus(autoSaved?"볼트에 저장됨":"정리 완료","");
   $("#setup").hidden=false; $("#controls").hidden=true;
@@ -413,7 +407,7 @@ JSON 하나만 출력:
   showNote(md,file,autoSaved);
 }
 function toMarkdown(s){
-  const d=(S.startedAt||new Date().toISOString()).slice(0,10);
+  const d=localDate(S.startedAt);
   const tags=["상담","1급비서관",S.setup.role,...(s.tags||[])].map(t=>String(t).replace(/\s+/g,"_").replace(/^#/,"")).filter((v,i,a)=>v&&a.indexOf(v)===i);
   const li=a=>(a&&a.length?a.map(x=>`- ${x}`).join("\n"):"- 없음");
   return `---
@@ -446,9 +440,6 @@ ${(s.followups||[]).map(x=>`- [ ] ${x}`).join("\n")||"- 없음"}
 - 성향: ${(s.persona||[]).join(", ")}
 - 기분 흐름: ${s.moodFlow||""}
 - 다음 상담 팁: ${s.nextTip||""}
-
-## 비서가 찾은 자료
-${S.research.length?S.research.map(r=>`- **${r.q}**: ${r.text.replace(/\n/g," ")} ${r.links.slice(0,2).map(l=>`[출처](${l.url})`).join(" ")}`).join("\n"):"- 없음"}
 
 ## 속기록
 ${S.lines.map(l=>`- **${l.spk==="me"?"나":S.setup.name||"상대"}** (${l.t}) ${l.text}`).join("\n")}
@@ -494,9 +485,9 @@ function download(name,text){const a=document.createElement("a");a.href=URL.crea
 $("#pastBtn").addEventListener("click",()=>{
   const all=sessions();
   if(!all.length){openSheet("지난 상담","<p class='small'>아직 기억된 상담이 없습니다. 상담을 마치면 여기에 쌓입니다.</p>",[["닫기",closeSheet]]);return}
-  openSheet("지난 상담",`<div class="past">${all.map((p,i)=>`<button data-i="${i}"><span><b>${esc(p.name||"이름 없음")}</b> · ${esc(p.summary?.title||"")}</span><time>${esc((p.endedAt||"").slice(0,10))}</time></button>`).join("")}</div>`,[["닫기",closeSheet]]);
+  openSheet("지난 상담",`<div class="past">${all.map((p,i)=>`<button data-i="${i}"><span><b>${esc(p.name||"이름 없음")}</b> · ${esc(p.summary?.title||"")}</span><time>${esc(localDate(p.endedAt))}</time></button>`).join("")}</div>`,[["닫기",closeSheet]]);
   $("#sheetBody").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{const p=all[+b.dataset.i];
-    openSheet(p.summary?.title||"상담",`<pre id="mdOut">${esc(p.markdown||"")}</pre>`,[["복사",copyMd],["파일로 저장",()=>download(`${(p.startedAt||"").slice(0,10)} ${p.name||"상담"}.md`,p.markdown||"")],["닫기",closeSheet,"primary"]])}));
+    openSheet(p.summary?.title||"상담",`<pre id="mdOut">${esc(p.markdown||"")}</pre>`,[["복사",copyMd],["파일로 저장",()=>download(`${localDate(p.startedAt)} ${p.name||"상담"}.md`,p.markdown||"")],["닫기",closeSheet,"primary"]])}));
 });
 
 /* ---------------- settings ---------------- */
@@ -504,15 +495,15 @@ async function openSettings(first){
   const dir=canPickFolder?await IDB.get("vaultDir").catch(()=>null):null;
   openSheet(first?"처음 한 번만 설정해 주세요":"설정",`
     <div style="display:flex;flex-direction:column;gap:12px">
-      <label class="f">Claude API 키 (이 기기에만 저장됩니다)<input id="sKey" type="password" placeholder="sk-ant-..." value="${esc(cfg.key)}" autocomplete="off"></label>
-      <p class="small" style="margin:-6px 0 0">키 발급: <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com → API Keys</a>. 콘솔에서 월 사용 한도를 걸어 두시길 권합니다.</p>
+      <label class="f">구글 제미나이 API 키 (무료, 이 기기에만 저장)<input id="sKey" type="password" placeholder="AIza..." value="${esc(cfg.gkey)}" autocomplete="off"></label>
+      <p class="small" style="margin:-6px 0 0">키 발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> → Create API key. 결제 정보는 넣지 마세요(넣으면 유료로 바뀝니다).</p>
       <label class="f">조언 엔진<select id="sModel">
-        <option value="claude-sonnet-5-5"${cfg.model==="claude-sonnet-5-5"?" selected":""}>Sonnet 5.5 — 균형 (권장)</option>
-        <option value="claude-haiku-4-5-20251001"${cfg.model.startsWith("claude-haiku")?" selected":""}>Haiku 4.5 — 가장 빠르고 저렴</option>
-        <option value="claude-opus-5-5"${cfg.model==="claude-opus-5-5"?" selected":""}>Opus 5.5 — 가장 깊이, 느리고 비쌈</option></select></label>
-      <label class="f">조언 갱신 간격<select id="sInt">${[6,10,15,25].map(n=>`<option value="${n}"${cfg.interval===n?" selected":""}>${n}초</option>`).join("")}</select></label>
+        <option value="auto"${cfg.gmodel==="auto"?" selected":""}>자동 (권장)</option>
+        <option value="gemini-flash-lite-latest"${cfg.gmodel==="gemini-flash-lite-latest"?" selected":""}>Flash-Lite — 빠르고 무료 한도 넉넉</option>
+        <option value="gemini-flash-latest"${cfg.gmodel==="gemini-flash-latest"?" selected":""}>Flash — 조언이 더 깊음</option></select></label>
+      <p class="small" style="margin:-6px 0 0">상대 이름은 구글로 보내지 않고 '상대'로 바꿔 보냅니다. 무료 키는 구글이 대화 내용을 검토·학습에 쓸 수 있습니다.</p>
+      <label class="f">조언 갱신 간격<select id="sInt">${[8,12,20,30].map(n=>`<option value="${n}"${cfg.interval===n?" selected":""}>${n}초</option>`).join("")}</select></label>
       <label class="f">내 이름<input id="sMe" value="${esc(cfg.me)}"></label>
-      <label style="display:flex;gap:8px;align-items:center;font-size:14px"><input id="sRes" type="checkbox" style="width:auto"${cfg.research?" checked":""}> 필요할 때 웹 검색으로 근거 자료 찾기</label>
       ${canPickFolder?`<div class="box"><h3>옵시디언 볼트 자동 저장 (노트북)</h3>
         <p class="small" style="margin:0 0 6px">${dir?`지금 저장 폴더: <b>${esc(dir.name)}</b>`:"구글 드라이브의 볼트 폴더를 고르면 상담 노트가 자동으로 들어갑니다."}</p>
         <button type="button" id="sPick">${dir?"폴더 바꾸기":"폴더 고르기"}</button></div>`:`<p class="small">폰에서는 상담 노트를 이 기기에 기억하고, '파일로 저장'으로 내려받을 수 있습니다. 볼트 자동 저장은 노트북 크롬에서 됩니다.</p>`}
@@ -520,16 +511,16 @@ async function openSettings(first){
   $("#sPick")?.addEventListener("click",async ev=>{const n=await pickVault(); if(n) ev.target.previousElementSibling.innerHTML=`지금 저장 폴더: <b>${esc(n)}</b>`});
 }
 function saveSettings(){
-  cfg.key=$("#sKey").value.trim(); cfg.model=$("#sModel").value; cfg.interval=+$("#sInt").value; cfg.me=$("#sMe").value.trim()||"천양진 원장"; cfg.research=$("#sRes").checked;
+  cfg.gkey=$("#sKey").value.trim(); cfg.gmodel=$("#sModel").value; modelOrder=null; cfg.interval=+$("#sInt").value; cfg.me=$("#sMe").value.trim()||"천양진 원장";
   LS.set("cfg",cfg); closeSheet();
-  if(cfg.key&&!S.live) $("#hint").textContent="설정을 저장했습니다. 상담 시작을 누르세요.";
+  if(cfg.gkey&&!S.live) $("#hint").textContent="설정을 저장했습니다. 상담 시작을 누르세요.";
 }
 $("#setBtn").addEventListener("click",()=>openSettings(false));
 
 /* ---------------- boot ---------------- */
 refreshNames(); renderScript(); renderBrief();
 if(!SR) $("#hint").innerHTML='<span class="err">이 브라우저는 연속 받아쓰기를 지원하지 않습니다. 크롬으로 열어 주세요.</span>';
-else if(!cfg.key) $("#hint").textContent="처음 한 번 '설정'에서 Claude API 키를 넣어 주세요. 그다음부터는 상담 시작만 누르면 됩니다.";
+else if(!cfg.gkey) $("#hint").textContent="처음 한 번 '설정'에서 제미나이 무료 키를 넣어 주세요. 그다음부터는 상담 시작만 누르면 됩니다.";
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
