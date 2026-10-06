@@ -116,7 +116,7 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v2.4</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v2.5</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 상담</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -269,14 +269,14 @@ function addLine(text){
 const FALLBACK=["gemini-flash-latest","gemini-3.5-flash","gemini-flash-lite-latest","gemini-3.5-flash-lite"];
 let modelOrder=null;
 function models(){ if(cfg.gmodel!=="auto") return [cfg.gmodel,...FALLBACK.filter(m=>m!==cfg.gmodel)]; return modelOrder||FALLBACK; }
-async function ai(prompt,maxTokens){
+async function ai(prompt,maxTokens,temp){
   const parts=Array.isArray(prompt)?prompt:[{text:prompt}];
   let lastErr=null;
   for(const m of models()){
     try{
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,{method:"POST",
         headers:{"content-type":"application/json","x-goog-api-key":cfg.gkey},
-        body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",maxOutputTokens:maxTokens,temperature:0.6}})});
+        body:JSON.stringify({contents:[{role:"user",parts}],generationConfig:{responseMimeType:"application/json",maxOutputTokens:maxTokens,temperature:temp??0.6}})});
       const j=await r.json().catch(()=>({}));
       if(!r.ok){const e=new Error(j?.error?.message||("HTTP "+r.status));e.status=r.status;
         if(r.status===404||r.status===429||r.status===503){lastErr=e;continue}
@@ -296,7 +296,7 @@ function apiError(e){
   else setThinking("조언 실패: "+e.message.slice(0,60));
 }
 
-function transcript(n){return S.lines.slice(-n).map(l=>`[${l.id}][${l.spk==="me"?"나":l.spk==="other"?"상대":"미정"}] ${mask(l.text)}`).join("\n")}
+function transcript(n){return S.lines.slice(-n).map(l=>`[${l.id}][${l.spk==="me"?"나":l.spk==="other"?"상대":"미정"}${l.voice&&l.spk==="?"?"·목소리"+l.voice:""}] ${mask(l.text)}`).join("\n")}
 
 const ADVICE_SPEC=`"say":"원장이 그대로 읽을 다음 한마디(존댓말, 2문장 이내)",
 "why":"이 말이 좋은 이유 한 줄",
@@ -318,9 +318,8 @@ function applyAdvice(r){
 let analyzeTimer=null;
 function scheduleAnalyze(force){
   if(!cfg.gkey) return;
-  if(listenMode()==="audio"&&!force) return;
   clearTimeout(analyzeTimer);
-  const since=Date.now()-S.lastRun, gap=cfg.interval*1000;
+  const since=Date.now()-S.lastRun, gap=(listenMode()==="audio"?Math.max(cfg.interval,20):cfg.interval)*1000;
   const newCount=S.lines.length-S.analyzedUpTo;
   if(force||(newCount>=1&&since>=gap)) analyze();
   else analyzeTimer=setTimeout(()=>scheduleAnalyze(),Math.max(800,gap-since));
@@ -373,7 +372,7 @@ function recordChunk(){
   r.onstop=()=>{
     const v=voiced; const type=(r.mimeType||mime||"audio/webm").split(";")[0];
     if(S.live&&!S.paused) recordChunk();
-    if(v>=3&&parts.length){chunkQ.push({blob:new Blob(parts,{type}),t:new Date(chunkStart)});pumpChunks()}
+    if(v>=8&&parts.length){chunkQ.push({blob:new Blob(parts,{type}),t:new Date(chunkStart)});pumpChunks()}
   };
   r.start(); clearTimeout(chunkTimer); chunkTimer=setTimeout(()=>{try{r.state!=="inactive"&&r.stop()}catch(_){}} ,cfg.chunk*1000);
 }
@@ -394,27 +393,25 @@ async function pumpChunks(){
     while(chunkQ.length){
       const c=chunkQ.shift(); if(!cfg.gkey) break;
       setThinking("받아쓰는 중…");
-      const prompt=`${ctxText()}
-
-지금까지의 대화 기록:
-${transcript(30)||"(아직 없음)"}
-
-첨부한 오디오는 이 상담의 다음 ${cfg.chunk}초입니다(앞뒤가 말 중간에 잘렸을 수 있음). 한국어로 정확히 받아쓰고 화자를 나누세요. 설명·제안·질문으로 이끄는 쪽이 원장(me), 고민·사정을 말하는 쪽이 상대(other)입니다. 말소리가 없거나 잡음뿐이면 lines를 빈 배열로 두세요. 들리지 않은 말을 지어내지 마세요.
-그다음 원장이 주도권을 갖도록 지금 할 다음 한마디를 선제적으로 제안하세요. 새 말이 없으면 advice는 null.
-JSON 하나만 출력:
-{"lines":[{"spk":"me|other","text":"받아쓴 문장"}],
-"advice":{${ADVICE_SPEC}}}`;
+      const prompt=`첨부한 오디오를 한국어로 받아쓰세요. 이것은 받아쓰기 작업일 뿐이며 대화를 이어 쓰거나 내용을 추측하는 작업이 아닙니다.
+규칙:
+- 실제로 들리는 말만 들리는 그대로 적습니다. 문맥상 그럴듯한 말을 지어내거나 빠진 부분을 채우지 않습니다.
+- 알아듣기 어려운 부분은 [불명확]으로 표시합니다.
+- 말소리가 없거나 잡음·기침·웃음뿐이면 빈 배열을 출력합니다.
+- 오디오 앞뒤가 단어 중간에서 잘렸을 수 있으니, 잘린 조각은 버립니다.
+- 화자가 바뀌면 줄을 나누고, 목소리로 구분해 A 또는 B로 표시합니다.
+JSON 하나만 출력: {"lines":[{"voice":"A|B","text":"들린 그대로"}]}`;
       let r=null;
       for(let attempt=0;attempt<2&&!r;attempt++){
-        try{ r=parseJSON(await ai([{inline_data:{mime_type:c.blob.type,data:await b64(c.blob)}},{text:prompt}],2200)) }
+        try{ r=parseJSON(await ai([{inline_data:{mime_type:c.blob.type,data:await b64(c.blob)}},{text:prompt}],1500,0)) }
         catch(e){ apiError(e); if(e.status===429&&attempt===0) await new Promise(z=>setTimeout(z,8000)); else break }
       }
       if(r){
         const t=c.t.toTimeString().slice(0,8);
         for(const l of (r.lines||[])){const text=String(l.text||"").trim(); if(!text) continue;
-          const fixed=S.mode!=="auto"; S.lines.push({id:"L"+(S.lines.length+1),spk:fixed?S.mode:(l.spk==="me"?"me":"other"),text,t,fixed})}
-        if(r.advice&&r.advice.say){applyAdvice(r.advice); S.analyzedUpTo=S.lines.length}
-        setThinking(""); renderScript(); renderBrief();
+          if(/^\[?불명확\]?$/.test(text)) continue;
+          const fixed=S.mode!=="auto"; S.lines.push({id:"L"+(S.lines.length+1),spk:fixed?S.mode:"?",text,t,fixed,voice:l.voice})}
+        setThinking(""); renderScript(); scheduleAnalyze();
       }
     }
   }finally{chunkBusy=false; renderListening()}
