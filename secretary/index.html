@@ -54,6 +54,15 @@ input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid
 @media (max-width:1000px){.split{grid-template-columns:1.25fr 1fr;grid-template-rows:34% 1fr;grid-template-areas:"script mon" "notes mon"}}
 @media (max-width:760px){.split{gap:6px} body{padding-left:8px;padding-right:8px} .pane-h{padding:6px 8px} .scroll{padding:8px} .line{grid-template-columns:1fr;gap:1px} .line p{font-size:13.5px} .who{justify-self:start}}
 .mon{display:flex;flex-direction:column;gap:8px}
+.ppl{display:flex;flex-direction:column;gap:6px}.pp{font-size:13px;border-top:1px dashed var(--line);padding-top:4px}.pp:first-child{border-top:none;padding-top:0}
+.tile.insight{border:1.5px solid var(--ink);background:var(--paper)}
+.insight .core{font-family:var(--f-display);font-size:15.5px;font-weight:600;line-height:1.45;margin-bottom:6px;text-wrap:pretty}
+.insight .ir{display:grid;grid-template-columns:3.6em 1fr;gap:6px;font-size:12.5px;padding:3px 0;border-top:1px dashed var(--line)}
+.insight .ir span{color:var(--muted);font-weight:600}
+.insight .ir p{margin:0;min-width:0}
+.insight ol{margin:0;padding-left:16px}
+.insight time{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.insight .dir{margin-top:6px;background:var(--me-soft);color:var(--me);border-radius:7px;padding:6px 9px;font-size:13px;font-weight:600}
 .tile{border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-width:0}
 .tile h3{margin:0 0 5px;font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.05em;display:flex;justify-content:space-between;gap:6px}
 .tile h3 span{font-family:var(--f-mono);font-weight:400}
@@ -170,14 +179,14 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.3</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.5</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
   </header>
 
   <form class="setup" id="setup">
-    <label class="f">상대 이름<input id="pName" placeholder="예: 김민서 어머님" autocomplete="off" list="names"></label>
+    <label class="f">상대 (여러 명이면 쉼표로)<input id="pName" placeholder="예: 김민서 어머님 / 김 선생, 박 선생" autocomplete="off" list="names"></label>
     <datalist id="names"></datalist>
     <label class="f">대화 종류<select id="pType">
       <option value="consult">학부모 상담</option><option value="career">학생 진학상담</option><option value="debate">토의·토론</option>
@@ -251,7 +260,13 @@ const EX_CARD={say:"옮기실지 판단하시기 전에, 이번 시험에서 틀
  persona:["자녀 정서 민감","결과 중심","직접적 표현"],caution:"학원 비교 발언이 나왔습니다. 방어하거나 다른 학원을 깎아내리지 마십시오.",stage:"탐색"};
 
 /* ---------------- render ---------------- */
-function spkLabel(s){return s==="me"?"나":s==="other"?(S.setup.name||"상대"):"판별중"}
+const ALIAS="ABCDEFGHIJ";
+function people(){return S.setup.people||[]}
+function aliasOf(name){const i=people().indexOf(name);return i<0?name:(people().length===1?"상대":"참석자"+ALIAS[i])}
+function nameOf(alias){if(!alias) return alias; if(alias==="상대"&&people().length===1) return people()[0]; const m=/^참석자([A-J])$/.exec(alias); if(m){const i=ALIAS.indexOf(m[1]); if(people()[i]) return people()[i]} return alias}
+function unmask(v){if(typeof v==="string"){let o=v; people().forEach((n,i)=>{o=o.split(people().length===1?"__none__":"참석자"+ALIAS[i]).join(n)}); return o} if(Array.isArray(v)) return v.map(unmask); if(v&&typeof v==="object"){const r={};for(const k in v)r[k]=unmask(v[k]);return r} return v}
+function otherName(l){return l.who||(people().length===1?people()[0]:(people().length?"상대":(S.setup.name||M().partner||"상대")))}
+function spkLabel(l){return l.spk==="me"?"나":l.spk==="other"?otherName(l):"판별중"}
 let editing=-1;
 function renderScript(){
   const el=$("#script");
@@ -260,7 +275,7 @@ function renderScript(){
   const real=S.live||S.lines.length; const lines=real?S.lines:EX_LINES;
   $("#exL").hidden=!!real; $("#lineCount").textContent=S.lines.length+"줄";
   let h=lines.map((l,i)=>{const c=l.spk==="me"?"me":l.spk==="other"?"other":"unk";
-    return `<div class="line"><button class="who ${c}" data-i="${i}" title="눌러서 화자 바꾸기">${esc(spkLabel(l.spk))}</button><p class="txt" data-i="${i}" title="눌러서 고치기">${esc(l.text)}${l.edited?'<span class="ed">✎</span>':""}<time>${l.t||""}</time></p></div>`}).join("");
+    return `<div class="line"><button class="who ${c}" data-i="${i}" title="눌러서 화자 바꾸기">${esc(spkLabel(l))}</button><p class="txt" data-i="${i}" title="눌러서 고치기">${esc(l.text)}${l.edited?'<span class="ed">✎</span>':""}<time>${l.t||""}</time></p></div>`}).join("");
   if(S.interim) h+=`<div class="line interim"><span class="who unk">…</span><p>${esc(S.interim)}</p></div>`;
   el.innerHTML=h||`<p class="empty">듣고 있습니다. 말씀을 시작하시면 여기에 받아 적습니다.</p>`;
   if(atBottom||!real) el.scrollTop=el.scrollHeight;
@@ -268,7 +283,11 @@ function renderScript(){
 const EX_MON={summary:"성적 하락으로 불안한 상태에서 학원 이동까지 고민 중입니다.",mood:{label:"불안·실망",level:2,signal:"'위축됐어요', '옮겨야 하나'"},
  emotions:["불안","실망","망설임"],engagement:4,trust:3,resistance:3,concerns:["수학 4등급","아이 자신감 하락"],needs:["원인 설명","구체적 대책"],
  persona:["자녀 정서 민감","결과 중심","직접적 표현"],signals:[{type:"warn",text:"다른 학원 비교 언급 — 이탈 신호"},{type:"good",text:"성적표를 같이 보자는 제안에 응함"}],
- stage:"탐색",open:["학생 본인 의지 확인","다음 시험까지 계획"]};
+ stage:"탐색",open:["학생 본인 의지 확인","다음 시험까지 계획"],
+ insight:{core:"성적보다 '아이가 이 학원에서 존중받고 있나'를 확인하고 싶어 하는 상담입니다.",hidden:"아이 자존감이 무너질까 두려움. 원장이 아이를 제대로 알고 있다는 확신을 원함",
+  pattern:"성적 이야기 → 아이 표정 이야기로 세 번 되돌아감. 숫자보다 감정이 핵심",turns:[{line:"",what:"'옮겨야 하나' 발언 후 말수가 줄어듦"}],
+  leverage:"지난 학기 아이가 칭찬받고 좋아했던 일을 원장이 기억하고 있음",risk:"대책만 늘어놓으면 '우리 애를 모른다'고 느끼고 이동 결정",
+  direction:"대책 전에 아이에 대한 관찰을 먼저 말해 신뢰를 회복하고, 그다음 다음 시험 계획으로 넘어가기"}};
 /* ---------------- 대화 종류 ---------------- */
 const MODES={
  consult:{label:"학부모 상담",partner:"학부모",goal:"신뢰를 얻고 원장이 대화 주도권을 쥐어 등록 유지·상담 목적을 달성하는 것",
@@ -326,8 +345,34 @@ function spark(vals){
 }
 function gauge(label,v,invert){const x=Math.max(1,Math.min(5,+v||3));const c=invert?lvColor(6-x):lvColor(x);return `<span>${label}</span><div class="bar"><i style="width:${x*20}%;background:${c}"></i></div>`}
 function talkShare(){
-  let me=0,ot=0; for(const l of S.lines){if(l.spk==="me")me+=l.text.length;else if(l.spk==="other")ot+=l.text.length}
-  const t=me+ot; return t?{me:Math.round(me/t*100),ot:Math.round(ot/t*100)}:null;
+  const per={}; let me=0,ot=0;
+  for(const l of S.lines){if(l.spk==="me")me+=l.text.length;else if(l.spk==="other"){ot+=l.text.length;const k=otherName(l);per[k]=(per[k]||0)+l.text.length}}
+  const t=me+ot; if(!t) return null;
+  return {me:Math.round(me/t*100),ot:Math.round(ot/t*100),per:Object.entries(per).map(([k,v])=>[k,Math.round(v/t*100)])};
+}
+const PCOL=["var(--other)","var(--warn)","var(--seal)","#7a5cc2","#2a8a8a","#a0522d"];
+function shareHTML(share,mo){
+  if(!share) return "";
+  const per=share.per&&share.per.length>1?share.per:[[share.per?.[0]?.[0]||"상대",share.ot]];
+  return `<div class="tile"><h3>말한 비율</h3><div class="split2"><i style="width:${share.me}%;background:var(--me)"></i>${per.map(([k,v],i)=>`<i style="width:${v}%;background:${PCOL[i%PCOL.length]}"></i>`).join("")}</div>
+   <div class="small">나 ${share.me}% · ${per.map(([k,v])=>`${esc(k)} ${v}%`).join(" · ")}${mo&&share.me>mo.talkMax?" — 상대 말을 더 들어 보세요":""}</div></div>`;
+}
+function peopleHTML(ps){
+  ps=(ps||[]).filter(x=>x&&x.name); if(ps.length<2) return "";
+  return `<div class="tile"><h3>참석자별</h3><div class="ppl">${ps.map(x=>{const v=Math.max(1,Math.min(5,+x.level||3));return `<div class="pp"><b>${esc(x.name)}</b> <span style="color:${lvColor(v)}">${esc(x.mood||"")}</span><div class="small">${esc(x.stance||"")}</div></div>`}).join("")}</div></div>`;
+}
+function lineTime(id){const l=S.lines.find(x=>x.id===id);return l?l.t.slice(0,5):""}
+function insightHTML(ins,real){
+  if(!ins||!ins.core) return "";
+  const row=(k,v)=>v?`<div class="ir"><span>${k}</span><p>${esc(v)}</p></div>`:"";
+  const turns=(ins.turns||[]).filter(x=>x&&x.what).slice(-4);
+  return `<div class="tile insight"><h3>꿰뚫어 보기 <span>대화 전체</span></h3>
+    <div class="core">${esc(ins.core)}</div>
+    ${row("본심",ins.hidden)}${row("구도",ins.dynamics)}${row("흐름",ins.pattern)}
+    ${turns.length?`<div class="ir"><span>전환점</span><ol>${turns.map(x=>`<li>${real&&x.line?`<time>${lineTime(x.line)}</time> `:""}${esc(x.what)}</li>`).join("")}</ol></div>`:""}
+    ${row("쥔 카드",ins.leverage)}${row("이대로면",ins.risk)}
+    ${ins.direction?`<div class="dir">➜ ${esc(ins.direction)}</div>`:""}
+  </div>`;
 }
 function renderBrief(){
   const el=$("#brief"); const real=S.live||S.lines.length; const m=real?S.mon:EX_MON;
@@ -335,9 +380,10 @@ function renderBrief(){
   const share=real?talkShare():{me:38,ot:62};
   const mins=S.startedAt&&real?Math.max(0,Math.round((Date.now()-new Date(S.startedAt))/60000)):12;
   if(!m){el.innerHTML=`<div class="mon"><p class="empty">대화가 쌓이면 상대 기분, 관심도, 걱정, 위험 신호를 계속 보여 드립니다. 할 말이 필요하면 아래 💡 조언 받기를 누르세요.</p>
-    ${share?`<div class="tile"><h3>말한 비율</h3><div class="split2"><i style="width:${share.me}%;background:var(--me)"></i><i style="width:${share.ot}%;background:var(--other)"></i></div><div class="small">나 ${share.me}% · 상대 ${share.ot}%</div></div>`:""}</div>`;return}
+    ${shareHTML(share,null)}</div>`;return}
   const lv=Math.max(1,Math.min(5,+m.mood?.level||3)); const mo=real?M():MODES.consult; const si=mo.stages?mo.stages.indexOf(m.stage):-1; const g=Array.isArray(m.g)?m.g:[m.engagement,m.trust,m.resistance];
   el.innerHTML=`<div class="mon">
+    ${insightHTML(m.insight,real)}
     ${m.summary?`<div class="tile"><h3>지금 상황 <span>${real?(m._t||""):"예시"}</span></h3><div style="font-size:13.5px">${esc(m.summary)}</div></div>`:""}
     <div class="tile"><h3>${real?esc(mo.partner):"상대"} 기분 <span>${mins}분째</span></h3>
       <div class="mood-big" style="color:${lvColor(lv)}">${esc(m.mood?.label||"-")}</div>
@@ -347,7 +393,8 @@ function renderBrief(){
     <div class="tile"><h3>흐름 지표</h3><div class="gauges">${mo.gauges.map((x,i)=>gauge(x[0],g[i],x[1])).join("")}</div></div>
     ${(m.signals||[]).length?`<div class="tile"><h3>신호</h3><ul class="sig">${m.signals.map(x=>`<li class="${x.type==="good"?"good":"warn"}">${x.type==="good"?"✓":"⚠"} ${esc(x.text)}</li>`).join("")}</ul></div>`:""}
     ${mo.stages?`<div class="tile"><h3>대화 단계</h3><div class="stages">${mo.stages.map((x,i)=>`<i class="${i===si?"on":""}">${x}</i>`).join("")}</div></div>`:""}
-    ${share?`<div class="tile"><h3>말한 비율</h3><div class="split2"><i style="width:${share.me}%;background:var(--me)"></i><i style="width:${share.ot}%;background:var(--other)"></i></div><div class="small">나 ${share.me}% · 상대 ${share.ot}%${share.me>mo.talkMax?" — 상대 말을 더 들어 보세요":""}</div></div>`:""}
+    ${shareHTML(share,mo)}
+    ${peopleHTML(m.people)}
     ${(m.concerns||[]).length?`<div class="tile"><h3>${mo.lists[0]}</h3><ul>${m.concerns.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
     ${(m.needs||[]).length?`<div class="tile"><h3>${mo.lists[1]}</h3><ul>${m.needs.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
     ${(m.open||[]).length?`<div class="tile"><h3>${mo.lists[2]}</h3><ul>${m.open.map(x=>`<li>${esc(x)}</li>`).join("")}</ul></div>`:""}
@@ -391,6 +438,7 @@ $("#notes").addEventListener("click",e=>{
 });
 let noteSeq=0;
 function addNotes(arr,forcedKind){
+  arr=unmask(arr||[]);
   const t=new Date().toTimeString().slice(0,5);
   for(const n of (arr||[])){ if(!n||!n.head) continue;
     S.notes.push({id:"n"+(++noteSeq),t,kind:forcedKind||n.kind||"주의",trigger:n.trigger||"",head:n.head,points:[].concat(n.points||[]).slice(0,3),facts:[].concat(n.facts||[]).slice(0,3),search:n.search||"",caution:n.caution||""}) }
@@ -459,7 +507,7 @@ async function ai(prompt,maxTokens,temp){
   throw lastErr||new Error("응답 없음");
 }
 /* 상대 이름은 외부로 보내지 않음 */
-function mask(t){const n=S.setup.name; if(!n) return t; let o=String(t); for(const part of [n,...n.split(/\s+/).filter(x=>x.length>=2)]) o=o.split(part).join("상대"); return o}
+function mask(t){let o=String(t??""); people().forEach(n=>{const a=aliasOf(n); for(const part of [n,...n.split(/\s+/).filter(x=>x.length>=2&&!/^(선생|선생님|어머님|아버님|학생|씨|님)$/.test(x))]) o=o.split(part).join(a)}); return o}
 function parseJSON(t){const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<a)return null;try{return JSON.parse(t.slice(a,b+1))}catch(_){return null}}
 function apiError(e){
   if(e.status===400&&/API key|API_KEY/i.test(e.message)||e.status===401||e.status===403) $("#hint").innerHTML='<span class="err">제미나이 키가 맞지 않습니다. 설정에서 키를 다시 넣어 주세요. 받아쓰기는 계속됩니다.</span>';
@@ -467,7 +515,16 @@ function apiError(e){
   else setThinking("조언 실패: "+e.message.slice(0,60));
 }
 
-function transcript(n){return S.lines.slice(-n).map(l=>`[${l.id}][${l.spk==="me"?"나":l.spk==="other"?"상대":"미정"}${l.voice&&l.spk==="?"?"·목소리"+l.voice:""}${l.edited?"·원장 수정":""}] ${mask(l.text)}`).join("\n")}
+function fullTranscript(){
+  const MAX=500; if(S.lines.length<=MAX) return transcript(MAX);
+  return `(앞부분 ${S.lines.length-MAX}줄 요약: ${S.mon?.story||"없음"})\n`+transcript(MAX);
+}
+function prevAnalysis(){
+  if(!S.mon) return "아직 없음 (첫 분석)";
+  const m=S.mon, ins=m.insight||{};
+  return JSON.stringify({story:m.story,insight:ins,mood:m.mood?.label,moodFlow:S.moods.slice(-12),concerns:m.concerns,needs:m.needs,stage:m.stage},null,0);
+}
+function transcript(n){return S.lines.slice(-n).map(l=>`[${l.id}][${l.spk==="me"?"나":l.spk==="other"?(l.who?mask(l.who):"상대"):"미정"}${l.voice&&l.spk==="?"?"·목소리"+l.voice:""}${l.edited?"·원장 수정":""}] ${mask(l.text)}`).join("\n")}
 
 const ADVICE_SPEC=`"say":"원장이 그대로 읽을 다음 한마디(존댓말, 2문장 이내)",
 "why":"이 말이 좋은 이유 한 줄",
@@ -475,13 +532,23 @@ const ADVICE_SPEC=`"say":"원장이 그대로 읽을 다음 한마디(존댓말,
 "evidence":[{"point":"근거 핵심","detail":"제도·수치·사례 한두 문장. 확실한 것만"}],
 "search":["원장이 확인하면 좋을 네이버 검색어(최대 3개)"],
 "caution":"원장이 지금 조심할 점. 없으면 빈 문자열"`;
+function INSIGHT_SPEC(){return `"story":"처음부터 지금까지 대화 흐름 요약 3~4문장",
+"insight":{"core":"이 대화의 진짜 핵심 — 겉으로 드러난 주제 밑의 본질 한두 문장",
+"hidden":"${M().partner}가 말하지 않았지만 실제로 바라는 것·본심",
+"dynamics":"사람이 여럿이면 누가 주도하고 누가 누구 편인지 관계 구도 한 줄, 아니면 빈 문자열",
+"pattern":"대화 전체에서 반복되거나 달라진 흐름 (예: 같은 걱정을 여러 번 되풀이, 태도가 누그러짐)",
+"turns":[{"line":"L번호","what":"전환점이 된 순간 (최대 4개, 오래된 순)"}],
+"leverage":"원장이 쥐고 있는 카드·활용할 점",
+"risk":"이대로 가면 예상되는 결말",
+"direction":"남은 대화에서 원장이 가져갈 큰 방향 한두 문장 (다음 한마디가 아니라 전략)"}`}
 function MONITOR_SPEC(){const mo=M(); return `"summary":"지금 대화 상황 한 줄",
 "mood":{"label":"${mo.partner}의 지금 기분 두세 단어","level":1~5(1=매우 불편, 5=매우 긍정),"signal":"그렇게 본 발화"},
 "emotions":["${mo.partner}에게서 읽히는 감정 2~4개"],
 "g":[${mo.gauges.map(x=>`${x[0]} 1~5`).join(", ")}],
 "concerns":["${mo.lists[0]}(최대 3개)"],"needs":["${mo.lists[1]}(최대 3개)"],"open":["${mo.lists[2]}(최대 3개)"],
 "signals":[{"type":"warn|good","text":"방금 대화에서 나온 위험 신호나 좋은 신호(최대 3개)"}],
-"persona":["${mo.partner} 성향 태그 3~5개"]${mo.stages?`,
+"persona":["${mo.partner} 성향 태그 3~5개"],
+"people":[{"name":"참석자 라벨","mood":"기분 두세 단어","stance":"입장·태도 한 줄","level":1~5}] (원장 외 말한 사람이 2명 이상일 때만, 아니면 빈 배열)${mo.stages?`,
 "stage":"${mo.stages.join("|")}"`:""}`}
 function ctxText(){
   const mem=S.memory.length?`\n같은 상대와의 지난 대화(오래된 순):\n${S.memory.map(m=>`- ${m.date}: ${m.summary}${m.tip?` / 다음 팁: ${m.tip}`:""}`).join("\n")}`:"";
@@ -489,13 +556,16 @@ function ctxText(){
   const mo=M(); return `당신은 ${cfg.me}의 실시간 대화 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 대화 종류: ${mo.label}. 상대: ${mo.partner}. 대화 목적: ${mask(S.setup.purpose)||"미정"}.\n비서의 임무: ${mo.goal}.${mask(mem)}${prev}`;
 }
 function applyAdvice(r){ if(r&&r.say){r._t=new Date().toTimeString().slice(0,5);S.last=r;S.cards.push(r)} }
-function applySpeakers(r){for(const [id,spk] of Object.entries(r?.speakers||{})){const l=S.lines.find(x=>x.id===id); if(l&&!l.fixed&&(spk==="me"||spk==="other")) l.spk=spk}}
-function SPK(){return `[미정] 줄은 말투와 내용으로 화자를 판별하세요(${M().me}). me=원장, other=상대. "원장 수정" 표시 줄은 원장이 직접 고친 정확한 내용이니 가장 믿을 만한 근거로 삼으세요.`}
+function applySpeakers(r){for(const [id,spk] of Object.entries(r?.speakers||{})){const l=S.lines.find(x=>x.id===id); if(!l||l.fixed||!spk) continue;
+  if(spk==="me"){l.spk="me";l.who=""} else {l.spk="other"; const nm=nameOf(String(spk)); l.who=(nm==="other"||nm==="상대")?"":nm}}}
+function speakerChoices(){const p=people(); return p.length>1?"me|"+p.map(aliasOf).join("|")+"|참석자X(새 사람)":"me|other"}
+function SPK(){const p=people(); const multi=p.length>1?` 참석자는 원장 외에 ${p.map(aliasOf).join(", ")}${p.length?"":""}입니다. 목소리 표시(목소리A/B…)와 말투·호칭·입장으로 누가 말했는지 구분하세요.`:` 원장 외에 여러 사람이 말하는 것 같으면 참석자A, 참석자B…로 구분하세요.`; return `${multi} `+SPK0()}
+function SPK0(){return `[미정] 줄은 말투와 내용으로 화자를 판별하세요(${M().me}). me=원장, other=상대. "원장 수정" 표시 줄은 원장이 직접 고친 정확한 내용이니 가장 믿을 만한 근거로 삼으세요.`}
 let analyzeTimer=null;
 function scheduleAnalyze(force){
   if(!cfg.gkey) return;
   clearTimeout(analyzeTimer);
-  const since=Date.now()-S.lastRun, gap=(listenMode()==="audio"?Math.max(cfg.interval,20):cfg.interval)*1000;
+  const since=Date.now()-S.lastRun, gap=(listenMode()==="audio"?Math.max(cfg.interval,30):Math.max(cfg.interval,20))*1000;
   const newCount=S.lines.length-S.analyzedUpTo;
   if(force||(newCount>=1&&since>=gap)) analyze();
   else analyzeTimer=setTimeout(()=>scheduleAnalyze(),Math.max(800,gap-since));
@@ -508,21 +578,27 @@ async function analyze(){
 
 음성 받아쓰기로 실시간 기록 중인 대화입니다(오타·끊김 있음). ${SPK()}
 
-${transcript(40)}
+[대화 전체 — 처음부터 지금까지]
+${fullTranscript()}
 
-원장은 청문회의 장관처럼 노트북을 열어 두고 대화합니다. 당신은 옆에서 상황을 지켜보며 쪽지를 넣어 주는 참모진입니다.
-1) ${M().partner}의 현재 심리와 대화 상황을 분석하세요.
+[직전까지의 분석 — 이어받아 갱신할 것]
+${prevAnalysis()}
+
+원장은 청문회의 장관처럼 노트북을 열어 두고 대화합니다. 당신은 옆에서 대화 전체를 지켜보며 쪽지를 넣어 주는 참모진입니다.
+최근 몇 마디에만 반응하지 마세요. 대화를 처음부터 끝까지 꿰뚫어 보고, 겉으로 오간 말 밑의 본질·반복되는 흐름·태도 변화·전환점을 읽으세요. 직전 분석을 이어받되, 새 근거가 있을 때만 바꾸고 근거가 없으면 유지해 일관성을 지키세요.
+1) ${M().partner}의 현재 심리와 대화 전체 상황을 분석하세요.
 2) 새로 나온 말(${newFrom}) 가운데 다음에 해당하는 순간이 있으면 쪽지를 ${M().quiet?"0~1":"0~2"}장 쓰세요: ${M().trigger}. 해당하는 순간이 없으면 notes는 빈 배열입니다.
 이미 보낸 쪽지와 같은 주제는 다시 쓰지 마세요. 이미 보낸 쪽지: ${S.notes.slice(-6).map(n=>n.head).join(" / ")||"없음"}
 JSON 하나만 출력:
-{"speakers":{"L번호":"me|other"},
+{"speakers":{"L번호":"${speakerChoices()}"},
 ${MONITOR_SPEC()},
+${INSIGHT_SPEC()},
 ${NOTE_SPEC()}}`;
   try{
-    const r=parseJSON(await ai(prompt,2200,0.4));
+    const r=parseJSON(await ai(prompt,3200,0.35));
     if(r){
       applySpeakers(r);
-      r._t=new Date().toTimeString().slice(0,5); S.mon=r; S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)));
+      Object.assign(r,unmask({...r,speakers:undefined})); r._t=new Date().toTimeString().slice(0,5); S.mon=r; S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)));
       S.analyzedUpTo=upTo; renderScript(); renderBrief(); addNotes(r.notes);
     }
     setThinking("");
@@ -542,10 +618,13 @@ async function advise(){
 
 음성 받아쓰기로 기록 중인 대화입니다(오타·끊김 있음). ${SPK()}
 
-${transcript(40)}
+[대화 전체]
+${fullTranscript()}
 
-원장이 대화 주도권을 갖도록 지금 바로 할 말을 쪽지 한 장으로 쓰세요. JSON 하나만 출력:
-{"speakers":{"L번호":"me|other"},
+[참모진의 큰 그림] ${S.mon?.insight?`핵심: ${S.mon.insight.core} / 본심: ${S.mon.insight.hidden} / 큰 방향: ${S.mon.insight.direction}`:"아직 없음"}
+
+대화 전체의 흐름과 큰 방향에 맞춰, 원장이 대화 주도권을 갖도록 지금 바로 할 말을 쪽지 한 장으로 쓰세요. JSON 하나만 출력:
+{"speakers":{"L번호":"${speakerChoices()}"},
 "trigger":"지금 상황 요약(25자 이내)","head":"원장이 그대로 읽을 다음 한마디(존댓말, 2문장 이내)","points":["흐름이 바뀌면 쓸 대안 또는 이어갈 말(최대 2개)"],"facts":["근거(확실한 것만)"],"search":"확인용 네이버 검색어 또는 빈 문자열","caution":"지금 조심할 점 또는 빈 문자열"}`;
   try{
     const r=parseJSON(await ai(prompt,1200,0.6));
@@ -659,7 +738,10 @@ $("#script").addEventListener("click",e=>{
     t.outerHTML=`<div class="edbox"><textarea id="edTa" rows="3">${esc(l.text)}</textarea><div class="edbar"><button data-ed="save" class="primary">저장</button><button data-ed="cancel">취소</button><button data-ed="del" class="danger">줄 삭제</button><span class="small pending"></span></div></div>`;
     const ta=$("#edTa"); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); return }
   const b=e.target.closest("button.who");if(!b)return;
-  const l=S.lines[+b.dataset.i]; if(!l) return; l.spk=l.spk==="me"?"other":"me"; l.fixed=true; renderScript()});
+  const l=S.lines[+b.dataset.i]; if(!l) return;
+  const opts=[{spk:"me",who:""},...(people().length?people().map(n=>({spk:"other",who:people().length>1?n:""})):[{spk:"other",who:""}])];
+  const extra=[...new Set(S.lines.filter(x=>x.spk==="other"&&x.who&&!people().includes(x.who)).map(x=>x.who))].map(w=>({spk:"other",who:w})); opts.push(...extra);
+  const cur=opts.findIndex(o=>o.spk===l.spk&&(o.who||"")===(l.who||"")); const nx=opts[(cur+1)%opts.length]; l.spk=nx.spk; l.who=nx.who; l.fixed=true; renderScript()});
 document.querySelectorAll(".seg button").forEach(b=>b.addEventListener("click",()=>{S.mode=b.dataset.spk;document.querySelectorAll(".seg button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)))}));
 $("#askBtn").addEventListener("click",advise);
 $("#pauseBtn").addEventListener("click",()=>{
@@ -676,7 +758,7 @@ $("#setup").addEventListener("submit",e=>{
   e.preventDefault(); if(S.live) return;
   if(!SR&&listenMode()==="web"){openSheet("이 브라우저는 받아쓰기를 지원하지 않습니다",`<p>크롬(Chrome)으로 이 주소를 열어 주세요. 삼성 인터넷이나 사파리는 연속 받아쓰기를 지원하지 않습니다.</p>`,[["닫기",closeSheet]]);return}
   if(!cfg.gkey){openSettings(true);return}
-  const ty=$("#pType").value; S.setup={type:ty,name:$("#pName").value.trim(),role:MODES[ty].partner,purpose:$("#pPurpose").value.trim()}; LS.set("lastType",ty);
+  const ty=$("#pType").value; const nm=$("#pName").value.trim(); S.setup={type:ty,name:nm,people:nm.split(/[,，、]/).map(x=>x.trim()).filter(Boolean).slice(0,10),role:MODES[ty].partner,purpose:$("#pPurpose").value.trim()}; LS.set("lastType",ty);
   matchMemory();
   Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,mon:null,notes:[],moods:[],analyzedUpTo:0,lastRun:0,startedAt:new Date().toISOString()});
   $("#setup").hidden=true; $("#controls").hidden=false; $("#pauseBtn").textContent="일시정지";
@@ -697,14 +779,14 @@ async function finish(){
   let sum=null;
   if(S.lines.length&&cfg.gkey){
     try{
-      const out=await ai(`${cfg.me}('나')와 ${M().partner}의 대화 받아쓰기 기록입니다(오타 있음). 대화 종류: ${M().label}. 목적: ${mask(S.setup.purpose)||"미정"}.
+      const out=await ai(`${cfg.me}('나')와 ${people().length>1?people().map(aliasOf).join(', '):M().partner}의 대화 받아쓰기 기록입니다(오타 있음). 대화 종류: ${M().label}. 목적: ${mask(S.setup.purpose)||"미정"}.
 ${transcript(600)}
 JSON 하나만 출력:
 {"title":"노트 제목(20자 이내)","oneLine":"한 줄 요약","summary":"핵심 요약 3~5문장",
 "points":["주요 내용"],"concerns":["${M().lists[0]}"],"promises":["원장이 약속하거나 합의한 것"],
 "followups":["다음에 할 일(누가·언제)"],"persona":["상대 성향 태그"],"moodFlow":"대화 중 상대 기분 변화 한 줄",
 "nextTip":"다음에 이 상대와 대화할 때 원장이 기억할 조언","tags":["옵시디언 태그(공백 없이, # 없이) 4~7개"]}`,3000);
-      sum=parseJSON(out);
+      sum=unmask(parseJSON(out));
     }catch(e){}
   }
   sum=sum||{title:M().label+" 기록",oneLine:"",summary:"",points:[],concerns:[],promises:[],followups:[],persona:[],moodFlow:"",nextTip:"",tags:[]};
@@ -753,11 +835,14 @@ ${(s.followups||[]).map(x=>`- [ ] ${x}`).join("\n")||"- 없음"}
 - 기분 흐름: ${s.moodFlow||""}
 - 다음 대화 팁: ${s.nextTip||""}
 
+## 꿰뚫어 보기
+${S.mon?.insight?.core?`- 핵심: ${S.mon.insight.core}\n- 본심: ${S.mon.insight.hidden||""}\n- 흐름: ${S.mon.insight.pattern||""}\n- 쥔 카드: ${S.mon.insight.leverage||""}\n- 이대로면: ${S.mon.insight.risk||""}\n- 큰 방향: ${S.mon.insight.direction||""}`:"- 없음"}
+
 ## 받은 쪽지
 ${S.notes.length?S.notes.map(n=>`- (${n.t}) **${n.kind}** ${n.trigger?`“${n.trigger}” → `:""}${n.head}`).join("\n"):"- 없음"}
 
 ## 속기록
-${S.lines.map(l=>`- **${l.spk==="me"?"나":S.setup.name||"상대"}** (${l.t}) ${l.text}`).join("\n")}
+${S.lines.map(l=>`- **${spkLabel(l)}** (${l.t}) ${l.text}`).join("\n")}
 
 ${tags.map(t=>"#"+t).join(" ")}
 `;
