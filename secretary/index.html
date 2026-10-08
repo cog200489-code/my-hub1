@@ -180,7 +180,7 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.6</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.7</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -244,7 +244,7 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const localDate=iso=>{const d=iso?new Date(iso):new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
 const LS={get(k,d){try{const v=localStorage.getItem("fs_"+k);return v==null?d:JSON.parse(v)}catch(_){return d}},set(k,v){try{localStorage.setItem("fs_"+k,JSON.stringify(v))}catch(_){}}};
 
-const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12,stt:"auto",chunk:15},LS.get("cfg",{}));
+const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12,stt:"auto",chunk:15,obVault:"옵시디언 기본 볼트",obFolder:"학원운영/1급비서관 기록"},LS.get("cfg",{}));
 if(!/^(auto|gemini)/.test(cfg.gmodel)) cfg.gmodel="auto";
 const S={notes:[],mon:null,live:false,paused:false,mode:"auto",lines:[],interim:"",cards:[],last:null,moods:[],setup:{},startedAt:null,memory:[],analyzedUpTo:0,busy:false,lastRun:0};
 
@@ -829,6 +829,8 @@ function toMarkdown(s){
   const li=a=>(a&&a.length?a.map(x=>`- ${x}`).join("\n"):"- 없음");
   return `---
 date: ${d}
+기록ID: fs-${Date.parse(S.startedAt)||Date.now()}
+시작: ${S.startedAt||""}
 상대: ${S.setup.name||"미상"}
 종류: ${M().label}
 목적: ${S.setup.purpose||""}
@@ -899,9 +901,21 @@ function openSheet(title,body,btns){
   $("#overlay").hidden=false;
 }
 function closeSheet(){$("#overlay").hidden=true}
+/* 폰: 옵시디언 앱으로 바로 넣기 (obsidian://new). 폰 볼트는 DriveSync가 구글 드라이브로 올리고,
+   매일 밤 노트북 Claude가 그 노트를 상담 관리 솔루션으로 옮긴다. */
+async function sendToObsidian(file,md,ev){
+  const path=`${(cfg.obFolder||"").replace(/^\/+|\/+$/g,"")}/${file.replace(/\.md$/,"")}`.replace(/^\//,"");
+  let viaClip=false;
+  try{await navigator.clipboard.writeText(md);viaClip=true}catch(_){}
+  const q=`vault=${encodeURIComponent(cfg.obVault||"")}&file=${encodeURIComponent(path)}`+(viaClip?"&clipboard=true":`&content=${encodeURIComponent(md)}`);
+  if(ev?.target) ev.target.textContent="옵시디언 여는 중…";
+  location.href=`obsidian://new?${q}`;
+}
 function showNote(md,file,saved){
-  openSheet("정리 완료",`<p class="small">${saved?"옵시디언 볼트 폴더에 저장했습니다.":"이 기기에 기억해 두었습니다. 같은 이름으로 다시 상담하면 비서가 참고합니다."}</p><pre id="mdOut">${esc(md)}</pre>`,[
-    ["복사",copyMd],["파일로 저장",()=>download(file,md)],["닫기",closeSheet,"primary"]]);
+  const btns=[["복사",copyMd],["파일로 저장",()=>download(file,md)]];
+  if(!saved) btns.push(["📥 옵시디언에 넣기",ev=>sendToObsidian(file,md,ev),"primary"]);
+  btns.push(["닫기",closeSheet,saved?"primary":""]);
+  openSheet("정리 완료",`<p class="small">${saved?"옵시디언 볼트 폴더에 저장했습니다.":"이 기기에 기억해 두었습니다. <b>📥 옵시디언에 넣기</b>를 누르면 옵시디언 앱에 노트가 들어가고, 밤에 상담 관리 솔루션으로 자동으로 넘어갑니다."}</p><pre id="mdOut">${esc(md)}</pre>`,btns);
 }
 async function copyMd(ev){const t=$("#mdOut").textContent;try{await navigator.clipboard.writeText(t);ev.target.textContent="복사됨"}catch(_){const r=document.createRange();r.selectNodeContents($("#mdOut"));const s=getSelection();s.removeAllRanges();s.addRange(r);ev.target.textContent="선택됨"}}
 function download(name,text){const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([text],{type:"text/markdown"}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500)}
@@ -910,7 +924,8 @@ $("#pastBtn").addEventListener("click",()=>{
   if(!all.length){openSheet("지난 상담","<p class='small'>아직 기억된 상담이 없습니다. 상담을 마치면 여기에 쌓입니다.</p>",[["닫기",closeSheet]]);return}
   openSheet("지난 상담",`<div class="past">${all.map((p,i)=>`<button data-i="${i}"><span><b>${esc(p.name||"이름 없음")}</b> · ${esc(p.summary?.title||"")}</span><time>${esc(localDate(p.endedAt))}</time></button>`).join("")}</div>`,[["닫기",closeSheet]]);
   $("#sheetBody").querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{const p=all[+b.dataset.i];
-    openSheet(p.summary?.title||"상담",`<pre id="mdOut">${esc(p.markdown||"")}</pre>`,[["복사",copyMd],["파일로 저장",()=>download(`${localDate(p.startedAt)} ${p.name||"상담"}.md`,p.markdown||"")],["닫기",closeSheet,"primary"]])}));
+    const pf=`${localDate(p.startedAt)} ${p.name||"상담"} - ${p.summary?.title||"상담"}.md`.replace(/[\\/:*?"<>|]/g,"_");
+    openSheet(p.summary?.title||"상담",`<pre id="mdOut">${esc(p.markdown||"")}</pre>`,[["복사",copyMd],["파일로 저장",()=>download(pf,p.markdown||"")],...(canPickFolder?[]:[["📥 옵시디언에 넣기",ev=>sendToObsidian(pf,p.markdown||"",ev)]]),["닫기",closeSheet,"primary"]])}));
 });
 
 /* ---------------- settings ---------------- */
@@ -933,13 +948,17 @@ async function openSettings(first){
       <label class="f">조언 갱신 간격 (크롬 받아쓰기)<select id="sInt">${[8,12,20,30].map(n=>`<option value="${n}"${cfg.interval===n?" selected":""}>${n}초</option>`).join("")}</select></label>
       <label class="f">내 이름<input id="sMe" value="${esc(cfg.me)}"></label>
       ${canPickFolder?`<div class="box"><h3>옵시디언 볼트 자동 저장 (노트북)</h3>
-        <p class="small" style="margin:0 0 6px">${dir?`지금 저장 폴더: <b>${esc(dir.name)}</b>`:"구글 드라이브의 볼트 폴더를 고르면 상담 노트가 자동으로 들어갑니다."}</p>
-        <button type="button" id="sPick">${dir?"폴더 바꾸기":"폴더 고르기"}</button></div>`:`<p class="small">폰에서는 상담 노트를 이 기기에 기억하고, '파일로 저장'으로 내려받을 수 있습니다. 볼트 자동 저장은 노트북 크롬에서 됩니다.</p>`}
+        <p class="small" style="margin:0 0 6px">${dir?`지금 저장 폴더: <b>${esc(dir.name)}</b>`:"구글 드라이브의 볼트 폴더를 고르면 상담 노트가 자동으로 들어갑니다."} 볼트 안의 <b>학원운영/1급비서관 기록</b> 폴더를 고르면 밤에 상담 관리 솔루션으로 자동으로 넘어갑니다.</p>
+        <button type="button" id="sPick">${dir?"폴더 바꾸기":"폴더 고르기"}</button></div>`:`<div class="box"><h3>옵시디언 앱으로 넣기 (폰)</h3>
+        <p class="small" style="margin:0 0 6px">상담을 마치고 <b>📥 옵시디언에 넣기</b>를 누르면 옵시디언 앱의 아래 폴더에 노트가 들어갑니다. 볼트 이름은 옵시디언 앱 왼쪽 위에 보이는 이름과 똑같이 적어 주세요.</p>
+        <label class="f">볼트 이름<input id="sObV" value="${esc(cfg.obVault)}"></label>
+        <label class="f">폴더<input id="sObF" value="${esc(cfg.obFolder)}"></label></div>`}
     </div>`,[["취소",closeSheet],["저장",saveSettings,"primary"]]);
   $("#sPick")?.addEventListener("click",async ev=>{const n=await pickVault(); if(n) ev.target.previousElementSibling.innerHTML=`지금 저장 폴더: <b>${esc(n)}</b>`});
 }
 function saveSettings(){
   cfg.gkey=$("#sKey").value.trim(); cfg.gmodel=$("#sModel").value; modelOrder=null; cfg.interval=+$("#sInt").value; cfg.stt=$("#sStt").value; cfg.chunk=+$("#sChunk").value; cfg.me=$("#sMe").value.trim()||"천양진 원장";
+  if($("#sObV")){cfg.obVault=$("#sObV").value.trim()||"옵시디언 기본 볼트"; cfg.obFolder=$("#sObF").value.trim();}
   LS.set("cfg",cfg); closeSheet();
   if(cfg.gkey&&!S.live) $("#hint").textContent="설정을 저장했습니다. 상담 시작을 누르세요.";
 }
