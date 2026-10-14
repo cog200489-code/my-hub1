@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>강사 근무장부</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#1d4a5c">
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@700&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* 장부 한 권: 위 탭(기록·정산·강사), 아래는 한 열 카드. 숫자는 고정폭으로 맞춘다. */
+:root{
+  --bg:#eef2f3; --paper:#fff; --ink:#15262e; --muted:#5b6d75; --line:#d3dde1;
+  --accent:#1d4a5c; --accent-soft:#dfeaee; --gold:#a66d14; --gold-soft:#f6ead6;
+  --bad:#b3261e; --bad-soft:#f8e2df; --ok:#2e7d4f;
+  --f-display:"Noto Serif KR","Nanum Myeongjo",serif;
+  --f-body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#10181c; --paper:#172228; --ink:#e4ecef; --muted:#93a5ad; --line:#2a3a42;
+  --accent:#8cc3d6; --accent-soft:#1c3440; --gold:#e3b468; --gold-soft:#3a2d17;
+  --bad:#ef7a70; --bad-soft:#3c1f1d; --ok:#72c494; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#10181c; --paper:#172228; --ink:#e4ecef; --muted:#93a5ad; --line:#2a3a42;
+  --accent:#8cc3d6; --accent-soft:#1c3440; --gold:#e3b468; --gold-soft:#3a2d17;
+  --bad:#ef7a70; --bad-soft:#3c1f1d; --ok:#72c494; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px 40px}
+.app{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.stack{display:flex;flex-direction:column;gap:14px;min-width:0}
+header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+h1{font-family:var(--f-display);font-size:22px;margin:0;color:var(--accent);text-wrap:balance}
+.sub{color:var(--muted);font-size:12.5px}
+nav.tabs{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--bg);padding-block:6px}
+nav.tabs button{border:1px solid var(--line);background:var(--paper);color:var(--muted);font-weight:600;padding:10px 0;border-radius:10px}
+nav.tabs button[aria-selected="true"]{background:var(--accent);color:var(--paper);border-color:var(--accent)}
+button{font:inherit;cursor:pointer;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:8px 12px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--paper);font-weight:600}
+button.ghost{background:transparent}
+button.danger{color:var(--bad);border-color:var(--bad)}
+button.small{padding:4px 9px;font-size:13px}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;min-width:0}
+textarea{font-family:var(--f-num);font-size:12px;min-height:120px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.card h2{margin:0;font-size:16px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px}
+@media (max-width:420px){.grid3{grid-template-columns:1fr 1fr}.grid3 .date{grid-column:1/-1}}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border-radius:99px;padding:6px 12px;font-size:14px}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--paper);border-color:var(--accent);font-weight:600}
+.chip.time{font-family:var(--f-num);font-size:12.5px;background:var(--accent-soft);border-color:transparent;color:var(--accent)}
+.preview{font-size:13px;color:var(--muted)}
+.preview b{color:var(--ink);font-family:var(--f-num)}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+.list{display:flex;flex-direction:column}
+.day{font-size:12px;color:var(--muted);padding:10px 0 4px;border-bottom:1px solid var(--line)}
+.item{display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--line)}
+.item .who{font-weight:600;font-size:14px}
+.item .memo{color:var(--muted);font-size:12.5px;min-width:0;overflow-wrap:anywhere}
+.tag{font-size:11px;padding:2px 7px;border-radius:99px;background:var(--gold-soft);color:var(--gold);font-weight:600;white-space:nowrap}
+.tag.free{background:var(--accent-soft);color:var(--accent)}
+.month{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.month strong{font-family:var(--f-display);font-size:18px}
+.pay{display:flex;flex-direction:column;gap:8px}
+.pay-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.pay-h .net{font-family:var(--f-num);font-size:22px;color:var(--accent)}
+dl{margin:0;display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:14px}
+dt{color:var(--muted)} dd{margin:0;text-align:right;font-family:var(--f-num);font-variant-numeric:tabular-nums}
+dd.minus{color:var(--bad)}
+.tbl{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--muted);font-weight:500;font-size:12px}
+td.hit{color:var(--ok);font-weight:600}
+.note{font-size:12px;color:var(--muted);background:var(--bg);border-radius:8px;padding:8px 10px}
+.example{display:flex;gap:10px;align-items:center;justify-content:space-between;background:var(--gold-soft);color:var(--gold);border-radius:10px;padding:10px 12px;font-size:13px;flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:99px;font-size:14px;z-index:20}
+.empty{color:var(--muted);font-size:14px;padding:12px 0}
+details summary{cursor:pointer;color:var(--accent);font-size:13px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header><h1>강사 근무장부</h1><span class="sub">근무시간 기록 → 주휴수당·3.3% 자동 정산</span></header>
+  <div id="exampleBar" class="example" hidden><span>지금 보이는 강사와 기록은 <b>예시</b>입니다.</span><button id="clearExample" class="small">예시 지우고 시작</button></div>
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="log" aria-selected="true">기록</button>
+    <button role="tab" data-tab="pay" aria-selected="false">정산</button>
+    <button role="tab" data-tab="staff" aria-selected="false">강사</button>
+  </nav>
+
+  <!-- 기록 -->
+  <section id="tab-log" class="stack">
+    <form id="logForm" class="card" autocomplete="off">
+      <h2>근무 기록</h2>
+      <div class="chips" id="teacherChips"></div>
+      <div class="grid3">
+        <label class="f date">날짜<input type="date" id="fDate" required></label>
+        <label class="f">출근<input type="time" id="fStart" required></label>
+        <label class="f">퇴근<input type="time" id="fEnd" required></label>
+      </div>
+      <div class="chips" id="quickTimes"></div>
+      <label class="f">메모 (추가근무 사유 등)<input id="fMemo" placeholder="예: 시험 대비 보충"></label>
+      <div class="row" style="justify-content:space-between">
+        <span class="preview" id="preview"></span>
+        <button class="primary" type="submit">저장</button>
+      </div>
+    </form>
+    <div class="card">
+      <div class="month"><button class="small ghost" data-mv="-1" aria-label="이전 달">‹</button><strong id="logMonth"></strong><button class="small ghost" data-mv="1" aria-label="다음 달">›</button></div>
+      <div class="list" id="logList"></div>
+    </div>
+  </section>
+
+  <!-- 정산 -->
+  <section id="tab-pay" class="stack" hidden>
+    <div class="card">
+      <div class="month"><button class="small ghost" data-mv="-1" aria-label="이전 달">‹</button><strong id="payMonth"></strong><button class="small ghost" data-mv="1" aria-label="다음 달">›</button></div>
+      <dl id="payTotal"></dl>
+    </div>
+    <div id="payList" class="stack"></div>
+    <p class="note">주휴수당: 근로자 강사가 한 주(월~일)에 15시간 이상 일하면 「주 근무시간 ÷ 40 × 8시간 × 시급」(최대 8시간분)을 그 주 일요일이 속한 달에 넣습니다. 결근 여부·4대보험·소득세는 반영하지 않으니 실제 지급 전 노무사·세무사 확인을 권합니다.</p>
+  </section>
+
+  <!-- 강사 -->
+  <section id="tab-staff" class="stack" hidden>
+    <form id="staffForm" class="card" autocomplete="off">
+      <h2 id="staffTitle">강사 추가</h2>
+      <div class="grid2">
+        <label class="f">이름<input id="sName" required placeholder="예: 김수학"></label>
+        <label class="f">시급 (원)<input id="sWage" type="number" inputmode="numeric" min="0" step="10" required placeholder="2026 최저 10320"></label>
+      </div>
+      <label class="f">지급 방식
+        <select id="sType"><option value="free">프리랜서 (3.3% 공제, 주휴 없음)</option><option value="emp">근로자 (주휴수당 계산)</option></select>
+      </label>
+      <div class="row" style="justify-content:flex-end"><button type="button" id="staffCancel" class="ghost" hidden>취소</button><button class="primary" type="submit">저장</button></div>
+    </form>
+    <div class="card"><h2>강사 목록</h2><div class="list" id="staffList"></div></div>
+    <div class="card">
+      <h2>백업</h2>
+      <p class="note" style="margin:0">기록은 이 폰(브라우저)에만 저장됩니다. 서버로 보내지 않으니 개인정보 걱정이 없는 대신, 폰을 바꾸기 전에는 백업을 복사해 두세요.</p>
+      <div class="row"><button type="button" id="copyBackup">백업 복사</button><button type="button" id="copyCsv">이번 달 표 복사 (엑셀용)</button></div>
+      <details><summary>백업 붙여넣어 되살리기</summary>
+        <div class="stack" style="margin-top:8px"><textarea id="restoreText" placeholder="복사해 둔 백업을 붙여넣기"></textarea><button type="button" id="restoreBtn">되살리기</button></div>
+      </details>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const KEY="eroum-payroll-v1";
+const won=n=>Math.round(n).toLocaleString("ko-KR")+"원";
+const hh=n=>(Math.round(n*100)/100).toString()+"시간";
+const pad=n=>String(n).padStart(2,"0");
+const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const parseD=s=>{const[a,b,c]=s.split("-").map(Number);return new Date(a,b-1,c)};
+const DOW="일월화수목금토";
+const uid=()=>Math.random().toString(36).slice(2,10);
+
+// 출퇴근 → 시간. 퇴근이 출근보다 이르면 자정을 넘긴 것으로 본다.
+function hours(start,end){
+  const m=t=>{const[h,mi]=t.split(":").map(Number);return h*60+mi};
+  return ((m(end)-m(start)+1440)%1440)/60;
+}
+// 그 주 월요일
+function monday(d){const x=new Date(d);x.setDate(x.getDate()-((x.getDay()+6)%7));return x}
+
+function sample(){
+  const now=new Date(),y=now.getFullYear(),mo=now.getMonth();
+  const A={id:"exA",name:"예시 강사 A",wage:25000,type:"free"},B={id:"exB",name:"예시 조교 B",wage:10320,type:"emp"};
+  const logs=[];
+  for(let d=1;d<=Math.min(now.getDate(),28);d++){
+    const dt=new Date(y,mo,d),w=dt.getDay(),s=ymd(dt);
+    if(w===2||w===4)logs.push({id:uid(),tid:"exA",date:s,start:"19:30",end:"21:30",memo:""});
+    if(w===6)logs.push({id:uid(),tid:"exA",date:s,start:"21:00",end:"23:00",memo:""});
+    if(w>=1&&w<=5)logs.push({id:uid(),tid:"exB",date:s,start:"16:00",end:"19:30",memo:""});
+    if(w===5&&d>14)logs.push({id:uid(),tid:"exA",date:s,start:"22:00",end:"00:30",memo:"시험 대비 보충"});
+  }
+  return {teachers:[A,B],logs,example:true};
+}
+let db;
+try{db=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!db||!Array.isArray(db.teachers))db=sample();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast("이 브라우저는 저장이 막혀 있어요. 백업을 복사해 두세요.")}}
+
+let cur=new Date();cur=new Date(cur.getFullYear(),cur.getMonth(),1);
+let sel=null, editId=null;
+const $=id=>document.getElementById(id);
+function toast(t){const el=$("toast");el.textContent=t;el.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(()=>el.hidden=true,2200)}
+const tById=id=>db.teachers.find(t=>t.id===id);
+const monthLabel=()=>cur.getFullYear()+"년 "+(cur.getMonth()+1)+"월";
+const inMonth=s=>{const d=parseD(s);return d.getFullYear()===cur.getFullYear()&&d.getMonth()===cur.getMonth()};
+
+/* ---------- 정산 ---------- */
+function settle(t){
+  const logs=db.logs.filter(l=>l.tid===t.id);
+  const weeks={};
+  for(const l of logs){const k=ymd(monday(parseD(l.date)));(weeks[k]=weeks[k]||{h:0,inH:0});const h=hours(l.start,l.end);weeks[k].h+=h;if(inMonth(l.date))weeks[k].inH+=h}
+  const rows=[];let base=0,ju=0,total=0;
+  for(const k of Object.keys(weeks).sort()){
+    const mon=parseD(k),sun=new Date(mon);sun.setDate(sun.getDate()+6);
+    const w=weeks[k];const sunIn=sun.getFullYear()===cur.getFullYear()&&sun.getMonth()===cur.getMonth();
+    if(!w.inH&&!sunIn)continue;
+    const jh=(t.type==="emp"&&w.h>=15&&sunIn)?Math.min(w.h,40)/40*8:0;
+    rows.push({label:(mon.getMonth()+1)+"/"+mon.getDate()+"~"+(sun.getMonth()+1)+"/"+sun.getDate(),wh:w.h,inH:w.inH,jh});
+    total+=w.inH;base+=w.inH*t.wage;ju+=jh*t.wage;
+  }
+  const gross=base+ju;
+  const tax=t.type==="free"?Math.floor(gross*0.033/10)*10:0;
+  return {rows,total,base,ju,gross,tax,net:gross-tax};
+}
+function renderPay(){
+  $("payMonth").textContent=monthLabel();
+  const box=$("payList");box.innerHTML="";
+  let sumGross=0,sumNet=0,sumH=0;
+  for(const t of db.teachers){
+    const s=settle(t);if(!s.total&&!s.ju)continue;
+    sumGross+=s.gross;sumNet+=s.net;sumH+=s.total;
+    const c=document.createElement("div");c.className="card pay";
+    c.innerHTML=`<div class="pay-h"><div><b>${esc(t.name)}</b> <span class="tag ${t.type==="free"?"free":""}">${t.type==="free"?"프리랜서 3.3%":"근로자"}</span></div><span class="net">${won(s.net)}</span></div>
+      <dl><dt>근무시간</dt><dd>${hh(s.total)}</dd><dt>기본급 (${won(t.wage)} × ${hh(s.total)})</dt><dd>${won(s.base)}</dd>
+      ${t.type==="emp"?`<dt>주휴수당</dt><dd>${won(s.ju)}</dd>`:""}
+      ${s.tax?`<dt>3.3% 공제</dt><dd class="minus">−${won(s.tax)}</dd>`:""}
+      <dt><b>지급액</b></dt><dd><b>${won(s.net)}</b></dd></dl>
+      <details><summary>주별 내역</summary><div class="tbl"><table><thead><tr><th>주 (월~일)</th><th>이번 달</th><th>주 전체</th>${t.type==="emp"?"<th>주휴</th>":""}</tr></thead><tbody>
+      ${s.rows.map(r=>`<tr><td>${r.label}</td><td class="num">${hh(r.inH)}</td><td class="num">${hh(r.wh)}</td>${t.type==="emp"?`<td class="num ${r.jh?"hit":""}">${r.jh?hh(r.jh):"-"}</td>`:""}</tr>`).join("")}
+      </tbody></table></div></details>
+      <div class="row"><button type="button" class="small" data-slip="${t.id}">명세 복사 (카톡용)</button></div>`;
+    box.appendChild(c);
+  }
+  if(!box.children.length)box.innerHTML=`<div class="card empty">${monthLabel()}에 기록된 근무가 없습니다. 기록 탭에서 출퇴근을 넣으면 여기서 바로 계산됩니다.</div>`;
+  $("payTotal").innerHTML=`<dt>전체 근무시간</dt><dd>${hh(sumH)}</dd><dt>지급 총액 (공제 전)</dt><dd>${won(sumGross)}</dd><dt><b>실지급 합계</b></dt><dd><b>${won(sumNet)}</b></dd>`;
+}
+function slip(t){
+  const s=settle(t);
+  const lines=db.logs.filter(l=>l.tid===t.id&&inMonth(l.date)).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start))
+    .map(l=>{const d=parseD(l.date);return `${d.getMonth()+1}/${d.getDate()}(${DOW[d.getDay()]}) ${l.start}~${l.end} ${hh(hours(l.start,l.end))}${l.memo?" · "+l.memo:""}`});
+  return `[${monthLabel()} 근무 명세] ${t.name} 선생님\n\n${lines.join("\n")}\n\n근무 ${hh(s.total)} × 시급 ${won(t.wage)} = ${won(s.base)}`+
+    (t.type==="emp"?`\n주휴수당 ${won(s.ju)}`:"")+(s.tax?`\n3.3% 공제 −${won(s.tax)}`:"")+`\n지급액 ${won(s.net)}\n\n틀린 곳이 있으면 말씀해 주세요.`;
+}
+
+/* ---------- 기록 ---------- */
+function renderChips(){
+  const box=$("teacherChips");box.innerHTML="";
+  if(!db.teachers.length){box.innerHTML=`<span class="preview">먼저 강사 탭에서 강사를 추가하세요.</span>`;return}
+  if(!tById(sel))sel=db.teachers[0].id;
+  for(const t of db.teachers){const b=document.createElement("button");b.type="button";b.className="chip";b.textContent=t.name;b.setAttribute("aria-pressed",t.id===sel);b.onclick=()=>{sel=t.id;renderChips();renderQuick()};box.appendChild(b)}
+}
+function renderQuick(){
+  const box=$("quickTimes");box.innerHTML="";const seen=new Set();
+  const recent=db.logs.filter(l=>l.tid===sel).sort((a,b)=>(b.date+b.start).localeCompare(a.date+a.start));
+  for(const l of recent){const k=l.start+"~"+l.end;if(seen.has(k))continue;seen.add(k);
+    const b=document.createElement("button");b.type="button";b.className="chip time";b.textContent=k;b.title="이 시간으로 채우기";
+    b.onclick=()=>{$("fStart").value=l.start;$("fEnd").value=l.end;updPreview()};box.appendChild(b);if(seen.size>=4)break}
+}
+function updPreview(){
+  const s=$("fStart").value,e=$("fEnd").value,t=tById(sel);
+  if(!s||!e||!t){$("preview").textContent="";return}
+  const h=hours(s,e);
+  $("preview").innerHTML=`<b>${hh(h)}</b> · ${won(h*t.wage)}${e<s?" (자정 넘김)":""}`;
+}
+function renderLogs(){
+  $("logMonth").textContent=monthLabel();
+  const box=$("logList");box.innerHTML="";
+  const logs=db.logs.filter(l=>inMonth(l.date)).sort((a,b)=>(b.date+b.start).localeCompare(a.date+a.start));
+  if(!logs.length){box.innerHTML=`<div class="empty">${monthLabel()} 기록이 없습니다.</div>`;return}
+  let last="";
+  for(const l of logs){
+    if(l.date!==last){last=l.date;const d=parseD(l.date);const h=document.createElement("div");h.className="day";h.textContent=`${d.getMonth()+1}월 ${d.getDate()}일 (${DOW[d.getDay()]})`;box.appendChild(h)}
+    const t=tById(l.tid);const it=document.createElement("div");it.className="item";
+    it.innerHTML=`<span class="who">${esc(t?t.name:"(삭제된 강사)")}</span><span class="memo"><span class="num">${l.start}~${l.end}</span>${l.memo?" · "+esc(l.memo):""}</span><span class="num">${hh(hours(l.start,l.end))}</span><button type="button" class="small ghost" data-del="${l.id}">삭제</button>`;
+    box.appendChild(it);
+  }
+}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))}
+
+/* ---------- 강사 ---------- */
+function renderStaff(){
+  const box=$("staffList");box.innerHTML="";
+  if(!db.teachers.length){box.innerHTML=`<div class="empty">아직 강사가 없습니다.</div>`;return}
+  for(const t of db.teachers){
+    const n=db.logs.filter(l=>l.tid===t.id).length;
+    const it=document.createElement("div");it.className="item";
+    it.innerHTML=`<span class="who">${esc(t.name)}</span><span class="memo">${won(t.wage)}/시간 · 기록 ${n}건</span><span class="tag ${t.type==="free"?"free":""}">${t.type==="free"?"3.3%":"근로자"}</span><span class="row"><button type="button" class="small ghost" data-edit="${t.id}">수정</button><button type="button" class="small ghost" data-rm="${t.id}">삭제</button></span>`;
+    box.appendChild(it);
+  }
+}
+function resetStaffForm(){editId=null;$("staffForm").reset();$("staffTitle").textContent="강사 추가";$("staffCancel").hidden=true}
+
+function renderAll(){$("exampleBar").hidden=!db.example;renderChips();renderQuick();updPreview();renderLogs();renderPay();renderStaff()}
+
+/* ---------- 이벤트 ---------- */
+document.querySelectorAll("nav.tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("nav.tabs button").forEach(x=>x.setAttribute("aria-selected",x===b));
+  for(const k of["log","pay","staff"])$("tab-"+k).hidden=k!==b.dataset.tab;
+  try{sessionStorage.setItem(KEY+"-tab",b.dataset.tab)}catch(e){}
+});
+document.querySelectorAll("[data-mv]").forEach(b=>b.onclick=()=>{cur=new Date(cur.getFullYear(),cur.getMonth()+Number(b.dataset.mv),1);renderLogs();renderPay()});
+["fStart","fEnd"].forEach(id=>$(id).addEventListener("input",updPreview));
+$("logForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  if(!tById(sel)){toast("강사를 먼저 추가하세요");return}
+  const l={id:uid(),tid:sel,date:$("fDate").value,start:$("fStart").value,end:$("fEnd").value,memo:$("fMemo").value.trim()};
+  if(l.start===l.end){toast("출근과 퇴근 시간이 같습니다");return}
+  db.logs.push(l);save();$("fMemo").value="";
+  const d=parseD(l.date);cur=new Date(d.getFullYear(),d.getMonth(),1);
+  renderAll();toast(`${tById(sel).name} ${hh(hours(l.start,l.end))} 저장됨`);
+});
+let armed=null;
+document.addEventListener("click",async e=>{
+  const del=e.target.closest("[data-del]"),rm=e.target.closest("[data-rm]"),ed=e.target.closest("[data-edit]"),sl=e.target.closest("[data-slip]");
+  const confirmTap=(btn,fn)=>{if(armed===btn){armed=null;fn()}else{if(armed)armed.textContent=armed.dataset.orig;armed=btn;btn.dataset.orig=btn.textContent;btn.textContent="한 번 더 눌러 삭제";btn.classList.add("danger");setTimeout(()=>{if(armed===btn){armed=null;btn.textContent=btn.dataset.orig;btn.classList.remove("danger")}},3000)}};
+  if(del)confirmTap(del,()=>{db.logs=db.logs.filter(l=>l.id!==del.dataset.del);save();renderAll();toast("삭제됨")});
+  if(rm)confirmTap(rm,()=>{const id=rm.dataset.rm;db.teachers=db.teachers.filter(t=>t.id!==id);db.logs=db.logs.filter(l=>l.tid!==id);save();renderAll();toast("강사와 기록 삭제됨")});
+  if(ed){const t=tById(ed.dataset.edit);editId=t.id;$("sName").value=t.name;$("sWage").value=t.wage;$("sType").value=t.type;$("staffTitle").textContent=t.name+" 수정";$("staffCancel").hidden=false;$("sName").focus()}
+  if(sl)copy(slip(tById(sl.dataset.slip)),"명세를 복사했습니다. 카톡에 붙여넣으세요");
+});
+$("staffCancel").onclick=resetStaffForm;
+$("staffForm").addEventListener("submit",e=>{
+  e.preventDefault();
+  const v={name:$("sName").value.trim(),wage:Number($("sWage").value),type:$("sType").value};
+  if(!v.name||!(v.wage>0))return;
+  if(editId)Object.assign(tById(editId),v);else{const t={id:uid(),...v};db.teachers.push(t);sel=t.id}
+  save();resetStaffForm();renderAll();toast("저장됨");
+});
+$("clearExample").onclick=()=>{db={teachers:[],logs:[]};save();renderAll();document.querySelector('[data-tab="staff"]').click();toast("빈 장부로 시작합니다. 강사부터 추가하세요")};
+async function copy(text,msg){
+  try{await navigator.clipboard.writeText(text);toast(msg)}
+  catch(e){const ta=$("restoreText");ta.closest("details").open=true;ta.value=text;ta.select();toast("자동 복사가 막혀 있어요. 선택된 글을 길게 눌러 복사하세요")}
+}
+$("copyBackup").onclick=()=>copy(JSON.stringify(db),"백업을 복사했습니다. 메모나 카톡 나와의 채팅에 붙여 두세요");
+$("copyCsv").onclick=()=>{
+  const rows=[["날짜","요일","강사","출근","퇴근","시간","메모"]];
+  db.logs.filter(l=>inMonth(l.date)).sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start)).forEach(l=>{const t=tById(l.tid);rows.push([l.date,DOW[parseD(l.date).getDay()],t?t.name:"",l.start,l.end,hours(l.start,l.end),l.memo])});
+  copy(rows.map(r=>r.join("\t")).join("\n"),"표를 복사했습니다. 구글 시트에 붙여넣으세요");
+};
+$("restoreBtn").onclick=()=>{
+  try{const d=JSON.parse($("restoreText").value);if(!Array.isArray(d.teachers)||!Array.isArray(d.logs))throw 0;db=d;delete db.example;save();renderAll();toast(`되살림: 강사 ${d.teachers.length}명, 기록 ${d.logs.length}건`)}
+  catch(e){toast("백업 글이 아닙니다. 백업 복사로 만든 글 전체를 붙여넣으세요")}
+};
+
+$("fDate").value=ymd(new Date());
+renderAll();
+try{const t=sessionStorage.getItem(KEY+"-tab");if(t)document.querySelector(`[data-tab="${t}"]`)?.click()}catch(e){}
+</script>
+</body>
+</html>
