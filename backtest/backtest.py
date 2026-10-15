@@ -5,12 +5,15 @@ SL, TP, LOCK_DAYS = -0.10, 0.20, 91          # 손절, 반익절, 매도금지(�
 BUY_FEE, SELL_FEE = 0.00015, 0.00015 + 0.0018 # 수수료 0.015%, 매도세 약 0.18%
 START_CASH = 100_000_000
 
-px = pd.read_csv('prices.csv', index_col=0, parse_dates=True).ffill().bfill()
+import os
+px = pd.read_csv(os.environ.get('PRICES', 'prices.csv'), index_col=0, parse_dates=True).ffill().bfill()
 bench = px.pop('069500_KODEX200')
 names = list(px.columns); N = len(names)
 
-def run(sl=SL, tp=TP, lock=LOCK_DAYS, reset_base=True, log=None):
-    sh = np.zeros(N); base = np.zeros(N); lock_until = [pd.Timestamp.min]*N
+def run(sl=SL, tp=TP, lock=LOCK_DAYS, reset_base=True, log=None, ma=0):
+    """ma>0: 매도금은 현금으로 들고 있다가 KODEX200이 ma일 이동평균 위일 때만 재투자"""
+    ok = ~(bench.ffill() < bench.ffill().rolling(ma).mean()) if ma else None  # 이평선 계산 전(초반)은 재투자 허용
+    sh = np.zeros(N); pend = 0.0; base = np.zeros(N); lock_until = [pd.Timestamp.min]*N
     def buy_equal(cash, p, d):
         amt = cash / N / (1 + BUY_FEE)
         add = amt / p
@@ -33,9 +36,10 @@ def run(sl=SL, tp=TP, lock=LOCK_DAYS, reset_base=True, log=None):
                 if log is not None: log.append((d.date(), names[i], '반익절', round(r*100,1)))
                 sh[i] /= 2; lock_until[i] = d + pd.Timedelta(days=int(lock))
                 if reset_base: base[i] = p[i]
-        if cash > 0:
-            add, base = buy_equal(cash, p, d); sh += add
-        eq.append((d, (sh*p).sum()))
+        pend += cash
+        if pend > 0 and (ok is None or ok.get(d, True)):
+            add, base = buy_equal(pend, p, d); sh += add; pend = 0.0
+        eq.append((d, (sh*p).sum() + pend))
     s = pd.concat([pd.Series({px.index[0]: START_CASH}), pd.Series(dict(eq))])
     return s, n_sl, n_tp
 
