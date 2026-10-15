@@ -180,7 +180,7 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.7</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.8</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -190,7 +190,7 @@ a{color:var(--me)}
     <label class="f">상대 (여러 명이면 쉼표로)<input id="pName" placeholder="예: 김민서 어머님 / 김 선생, 박 선생" autocomplete="off" list="names"></label>
     <datalist id="names"></datalist>
     <label class="f">대화 종류<select id="pType">
-      <option value="consult">학부모 상담</option><option value="career">학생 진학상담</option><option value="debate">토의·토론</option>
+      <option value="consult">학부모 상담</option><option value="career">학생 진학상담</option><option value="debate">토의·토론</option><option value="meeting">회의·민원 협의 (여러 명)</option>
       <option value="rebuke">선생님 질책·피드백</option><option value="mentor">선배·멘토 조언 듣기</option><option value="listen">고민 들어주기</option><option value="daily">아내와 일상 대화</option><option value="etc">기타 (목적을 적어 주세요)</option></select></label>
     <label class="f" style="flex:2 1 220px">대화 목적 (선택)<input id="pPurpose" placeholder="예: 고1 내신 하락, 수학 반 이동 고민" autocomplete="off"></label>
     <button class="primary big" id="startBtn" type="submit">🎤 대화 시작</button>
@@ -306,6 +306,11 @@ const MODES={
   kinds:"반박 근거|논점 정리|사실 확인|양보 포인트|주의",trigger:"상대의 주장·반박·근거 제시·사실 주장",
   gauges:[["상대 논리",0],["동의도",0],["감정 과열",1]],lists:["상대 논점","합의된 점","남은 쟁점"],
   stages:["논점 제기","반론","쟁점 정리","결론"],talkMax:101},
+ meeting:{label:"회의·민원 협의",partner:"참석자",goal:"여러 사람이 오간 요구·약속·기한을 누가 했는지 정확히 기록하고, 원장 쪽 입장에서 놓치면 안 될 요구와 상대의 약속을 확인·확정받게 돕는 것",
+  me:"원장 쪽(원장이 속한 편) 발언=원장, 그 외 각 참석자는 참석자A·B…로 구분",
+  kinds:"요구 정리|약속 확인|기한·담당 확정|사실 확인|주의",trigger:"누군가 요구·약속·기한·책임을 말한 순간, 또는 약속이 모호하게 넘어가는 순간",
+  gauges:[["약속 구체성",0],["상대 성의",0],["감정 과열",1]],lists:["우리 쪽 요구","상대가 약속한 것","확정 안 된 것"],
+  stages:["안건 제기","요구","답변","정리"],talkMax:40},
  rebuke:{label:"선생님 질책·피드백",partner:"선생님",goal:"감정이 아니라 사실로 문제를 짚고, 관계를 해치지 않으면서 구체적인 개선 약속을 받아내는 것. 원장의 표현이 지나치면 바로 경고",
   me:"문제를 지적하고 요구하는 쪽=원장, 해명하거나 사정을 말하는 쪽=선생님",
   kinds:"사실 정리|말 다듬기|주의|합의안",trigger:"상대의 해명·변명·반발, 또는 원장의 표현이 거칠어진 순간",
@@ -542,7 +547,8 @@ function INSIGHT_SPEC(){return `"story":"처음부터 지금까지 대화 흐름
 "leverage":"원장이 쥐고 있는 카드·활용할 점",
 "risk":"이대로 가면 예상되는 결말",
 "direction":"남은 대화에서 원장이 가져갈 큰 방향 한두 문장 (다음 한마디가 아니라 전략)"}`}
-function MONITOR_SPEC(){const mo=M(); return `"summary":"지금 대화 상황 한 줄",
+function MONITOR_SPEC(){const mo=M(); return `"myStance":"원장이 이 대화에서 어느 편·어떤 역할인지 한 줄('나' 발언 근거). 모르면 '불확실'",
+"summary":"지금 대화 상황 한 줄",
 "mood":{"label":"${mo.partner}의 지금 기분 두세 단어","level":1~5(1=매우 불편, 5=매우 긍정),"signal":"그렇게 본 발화"},
 "emotions":["${mo.partner}에게서 읽히는 감정 2~4개"],
 "g":[${mo.gauges.map(x=>`${x[0]} 1~5`).join(", ")}],
@@ -551,10 +557,12 @@ function MONITOR_SPEC(){const mo=M(); return `"summary":"지금 대화 상황 �
 "persona":["${mo.partner} 성향 태그 3~5개"],
 "people":[{"name":"참석자 라벨","mood":"기분 두세 단어","stance":"입장·태도 한 줄","level":1~5}] (원장 외 말한 사람이 2명 이상일 때만, 아니면 빈 배열)${mo.stages?`,
 "stage":"${mo.stages.join("|")}"`:""}`}
+/* v3.8: 원장 입장 지키기 — 10/14 민원 회의에서 원장이 주민 쪽인데 쪽지가 공사업체 대변인처럼 "즉시 조치하겠습니다"를 쓴 문제 */
+const STANCE_RULE=`[입장 규칙] 쪽지·할 말은 반드시 원장의 입장에서 씁니다. 원장이 책임 주체라는 근거가 없으면 원장이 상대 대신 사과·약속·"조치하겠습니다"를 하는 문장을 쓰지 마세요. 원장의 입장이 불확실하면 '나' 발언에서 먼저 판단하고, 그래도 모르면 확인 질문이나 요구·약속 정리를 쓰세요.`;
 function ctxText(){
   const mem=S.memory.length?`\n같은 상대와의 지난 대화(오래된 순):\n${S.memory.map(m=>`- ${m.date}: ${m.summary}${m.tip?` / 다음 팁: ${m.tip}`:""}`).join("\n")}`:"";
   const prev=S.last?`\n직전에 제안한 말: "${S.last.say}" (같은 말 반복 금지, 대화가 진행된 만큼 다음 단계로)`:"";
-  const mo=M(); return `당신은 ${cfg.me}의 실시간 대화 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 대화 종류: ${mo.label}. 상대: ${mo.partner}. 대화 목적: ${mask(S.setup.purpose)||"미정"}.\n비서의 임무: ${mo.goal}.${mask(mem)}${prev}`;
+  const mo=M(); return `당신은 ${cfg.me}의 실시간 대화 비서입니다. '나'는 ${cfg.me}(더이룸학원 원장, 창원. 고교 내신·고교학점제·5등급제 전문가). 대화 종류: ${mo.label}. 상대: ${mo.partner}. 대화 목적: ${mask(S.setup.purpose)||"미정"}.\n비서의 임무: ${mo.goal}.\n원장의 입장(추정): ${S.stance||"아직 모름"}\n${STANCE_RULE}${mask(mem)}${prev}`;
 }
 function applyAdvice(r){ if(r&&r.say){r._t=new Date().toTimeString().slice(0,5);S.last=r;S.cards.push(r)} }
 function applySpeakers(r){for(const [id,spk] of Object.entries(r?.speakers||{})){const l=S.lines.find(x=>x.id===id); if(!l||l.fixed||!spk) continue;
@@ -599,7 +607,7 @@ ${NOTE_SPEC()}}`;
     const r=parseJSON(await ai(prompt,3200,0.35));
     if(r){
       applySpeakers(r);
-      Object.assign(r,unmask({...r,speakers:undefined})); r._t=new Date().toTimeString().slice(0,5); S.mon=r; S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)));
+      Object.assign(r,unmask({...r,speakers:undefined})); r._t=new Date().toTimeString().slice(0,5); S.mon=r; if(r.myStance&&!/불확실/.test(r.myStance)) S.stance=r.myStance; S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)));
       S.analyzedUpTo=upTo; renderScript(); renderBrief(); addNotes(r.notes);
     }
     setThinking("");
@@ -695,13 +703,23 @@ JSON 하나만 출력: {"lines":[{"voice":"A|B","text":"들린 그대로"}]}`;
       }
       if(r){
         const t=c.t.toTimeString().slice(0,8);
-        for(const l of (r.lines||[])){const text=String(l.text||"").trim(); if(!text) continue;
-          if(/^\[?불명확\]?$/.test(text)) continue;
-          const fixed=S.mode!=="auto"; S.lines.push({id:"L"+(S.lines.length+1),spk:fixed?S.mode:"?",text,t,fixed,voice:l.voice})}
+        for(const l of cleanChunk(r.lines)){
+          const fixed=S.mode!=="auto"; S.lines.push({id:"L"+(S.lines.length+1),spk:fixed?S.mode:"?",text:l.text,t,fixed,voice:l.voice})}
         setThinking(""); renderScript(); scheduleAnalyze();
       }
     }
   }finally{chunkBusy=false; renderListening()}
+}
+/* v3.8: 받아쓰기 결과 다듬기 — 10/14 기록에서 ① 받아쓰기 지시문이 속기록에 섞임 ② 한 낱말씩 줄이 쪼개짐(같은 시각 20줄) */
+const ECHO=/받아쓰세요|받아쓰기 작업|추측하는 작업|들리는 그대로 적|\[불명확\]으로 표시|JSON 하나만/;
+function cleanChunk(lines){
+  const out=[];
+  for(const l of (lines||[])){const text=String(l?.text||"").trim();
+    if(!text||/^\[?불명확\]?$/.test(text)||ECHO.test(text)) continue;
+    const last=out[out.length-1];
+    if(last&&last.voice===l.voice) last.text+=" "+text; else out.push({voice:l.voice,text});
+  }
+  return out;
 }
 async function drainAudio(){for(let i=0;i<120&&(chunkQ.length||chunkBusy);i++) await new Promise(z=>setTimeout(z,500))}
 
@@ -761,7 +779,7 @@ $("#setup").addEventListener("submit",e=>{
   if(!cfg.gkey){openSettings(true);return}
   const ty=$("#pType").value; const nm=$("#pName").value.trim(); S.setup={type:ty,name:nm,people:nm.split(/[,，、]/).map(x=>x.trim()).filter(Boolean).slice(0,10),role:MODES[ty].partner,purpose:$("#pPurpose").value.trim()}; LS.set("lastType",ty);
   matchMemory();
-  Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,mon:null,notes:[],moods:[],analyzedUpTo:0,lastRun:0,startedAt:new Date().toISOString()});
+  Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,mon:null,notes:[],moods:[],analyzedUpTo:0,lastRun:0,stance:"",startedAt:new Date().toISOString()});
   beginLive();
 });
 function beginLive(){
@@ -804,8 +822,9 @@ async function finish(){
       const out=await ai(`${cfg.me}('나')와 ${people().length>1?people().map(aliasOf).join(', '):M().partner}의 대화 받아쓰기 기록입니다(오타 있음). 대화 종류: ${M().label}. 목적: ${mask(S.setup.purpose)||"미정"}.
 ${transcript(600)}
 JSON 하나만 출력:
-{"title":"노트 제목(20자 이내)","oneLine":"한 줄 요약","summary":"핵심 요약 3~5문장",
-"points":["주요 내용"],"concerns":["${M().lists[0]}"],"promises":["원장이 약속하거나 합의한 것"],
+${STANCE_RULE}
+{"title":"노트 제목(20자 이내)","partnerGuess":"상대가 누구인지(이름·소속·역할) 대화에서 드러난 대로 한 줄. 원장이 적어 둔 상대가 있으면 빈 문자열","purposeGuess":"이 대화의 목적 한 줄. 원장이 적어 둔 목적이 있으면 빈 문자열","myStance":"원장이 어느 편·어떤 역할이었는지 한 줄","oneLine":"한 줄 요약","summary":"핵심 요약 3~5문장",
+"points":["주요 내용"],"concerns":["${M().lists[0]}"],"promises":["약속·합의한 것 — 누가 약속했는지 앞에 적기(예: 현장 측: …)"],
 "followups":["다음에 할 일(누가·언제)"],"persona":["상대 성향 태그"],"moodFlow":"대화 중 상대 기분 변화 한 줄",
 "nextTip":"다음에 이 상대와 대화할 때 원장이 기억할 조언","tags":["옵시디언 태그(공백 없이, # 없이) 4~7개"]}`,3000);
       sum=unmask(parseJSON(out));
@@ -815,7 +834,8 @@ JSON 하나만 출력:
   const md=toMarkdown(sum);
   const rec2={type:S.setup.type,name:S.setup.name,role:S.setup.role,purpose:S.setup.purpose,startedAt:S.startedAt,endedAt:new Date().toISOString(),summary:sum,markdown:md};
   const all=sessions(); all.unshift(rec2); LS.set("sessions",all.slice(0,300)); refreshNames();
-  const file=`${localDate(S.startedAt)} ${S.setup.name||M().partner} - ${sum.title||M().label}.md`.replace(/[\\/:*?"<>|]/g,"_");
+  const who=S.setup.name||(sum.partnerGuess?String(sum.partnerGuess).slice(0,20):"")||M().partner;
+  const file=`${localDate(S.startedAt)} ${who} - ${sum.title||M().label}.md`.replace(/[\\/:*?"<>|]/g,"_");
   const autoSaved=await saveToVault(file,md);
   setStatus(autoSaved?"볼트에 저장됨":"정리 완료","");
   $("#setup").hidden=false; $("#controls").hidden=true; $("#hint").classList.remove("live-hide");
@@ -831,14 +851,15 @@ function toMarkdown(s){
 date: ${d}
 기록ID: fs-${Date.parse(S.startedAt)||Date.now()}
 시작: ${S.startedAt||""}
-상대: ${S.setup.name||"미상"}
+상대: ${S.setup.name||(s.partnerGuess?s.partnerGuess+" (추정)":"미상")}
 종류: ${M().label}
-목적: ${S.setup.purpose||""}
+목적: ${S.setup.purpose||(s.purposeGuess?s.purposeGuess+" (추정)":"")}
 tags: [${tags.join(", ")}]
 ---
-# ${d} ${S.setup.name||M().partner} — ${s.title||M().label}
+# ${d} ${S.setup.name||(s.partnerGuess?String(s.partnerGuess).slice(0,20):"")||M().partner} — ${s.title||M().label}
 
 > ${s.oneLine||""}
+${(s.myStance||S.stance)?`\n- 원장 입장: ${s.myStance||S.stance}\n`:""}
 
 ## 요약
 ${s.summary||""}
@@ -881,10 +902,14 @@ const canPickFolder=!!window.showDirectoryPicker;
 async function saveToVault(name,md){
   if(!canPickFolder) return false;
   try{
-    const dir=await IDB.get("vaultDir"); if(!dir) return false;
-    let p=await dir.queryPermission({mode:"readwrite"});
-    if(p!=="granted") p=await dir.requestPermission({mode:"readwrite"});
+    const root=await IDB.get("vaultDir"); if(!root) return false;
+    let p=await root.queryPermission({mode:"readwrite"});
+    if(p!=="granted") p=await root.requestPermission({mode:"readwrite"});
     if(p!=="granted") return false;
+    /* v3.8: 볼트 맨 위에 저장되던 문제(10/14) — 설정의 폴더(기본 학원운영/1급비서관 기록)로 들어가서 저장.
+       고른 폴더가 이미 그 폴더(또는 그 하위 경로의 끝)이면 그대로 쓴다. */
+    let dir=root; const segs=(cfg.obFolder||"").split("/").map(s=>s.trim()).filter(Boolean);
+    const k=segs.lastIndexOf(root.name); for(const s of segs.slice(k+1)) dir=await dir.getDirectoryHandle(s,{create:true});
     const fh=await dir.getFileHandle(name,{create:true}); const w=await fh.createWritable(); await w.write(md); await w.close();
     return true;
   }catch(_){return false}
