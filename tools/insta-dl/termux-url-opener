@@ -1,0 +1,49 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# 공유 버튼으로 받은 인스타 링크를 내려받는다.
+url="$1"
+dir="$HOME/storage/downloads/Instagram"
+mkdir -p "$dir"
+
+case "$url" in
+  *instagram.com*) ;;
+  *) echo "❌ 인스타 링크가 아니에요: $url"; read -n1 -p "아무 키나 누르면 닫혀요"; exit 1 ;;
+esac
+
+cookies=()
+[ -f "$HOME/.insta-cookies.txt" ] && cookies=(--cookies "$HOME/.insta-cookies.txt")
+
+get() {
+  yt-dlp "${cookies[@]}" --no-playlist --write-description \
+    -o "$dir/%(upload_date)s_%(uploader)s_%(id)s.%(ext)s" \
+    --print after_move:filepath "$url"
+}
+
+echo "⬇️  내려받는 중... $url"
+out=$(get) || { echo "🔄 yt-dlp 업데이트 후 다시 시도"; pip install -qU yt-dlp; out=$(get); } || {
+  echo ""
+  echo "❌ 실패했어요. 비공개 계정이거나 인스타가 로그인을 요구하는 경우예요."
+  read -n1 -p "아무 키나 누르면 닫혀요"; exit 1
+}
+
+# 설명글을 제2의 뇌용 마크다운 메모로 바꾼다
+while IFS= read -r f; do
+  base="${f%.*}"
+  if [ -f "$base.description" ]; then
+    {
+      echo "---"
+      echo "source: $url"
+      echo "saved: $(date +%F)"
+      echo "tags: [인스타, 영감]"
+      echo "---"
+      echo ""
+      echo "![[$(basename "$f")]]"
+      echo ""
+      cat "$base.description"
+    } > "$base.md"
+    rm -f "$base.description"
+  fi
+  command -v termux-media-scan >/dev/null && termux-media-scan "$f" >/dev/null 2>&1
+  echo "✅ 저장: 다운로드/Instagram/$(basename "$f")"
+done <<< "$out"
+
+sleep 2
