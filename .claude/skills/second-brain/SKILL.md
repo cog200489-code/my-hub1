@@ -31,6 +31,7 @@ description: Use when 주인님 shares an inspiration, video/article link or sum
    channel: 채널/작성자
    scrap_date: YYYY-MM-DD
    verdict: 시도할 만함 | 일부 채택 | 보류 | 해당 없음
+   use_when: 이 노트를 꺼낼 상황 (예: 오래 걸리는 작업 도구 만들 때)
    tags: [스크랩, 주제 태그들]
    ---
    # 제목
@@ -38,6 +39,7 @@ description: Use when 주인님 shares an inspiration, video/article link or sum
    ## 1. 핵심 내용
    ## 2. Claude의 생각   (좋은 점 / 빈틈·비판 / 주인님 적용 아이디어)
    ## 3. 판정
+   ## 4. 적용 계획   (주인님 일 어디에 · 누가 · 지금 할 첫 단계)
    ## 연결   ([[기존 노트 제목]] 링크)
    ```
 4. 태그는 기존 노트에서 쓰는 태그를 먼저 재사용한다.
@@ -51,7 +53,12 @@ description: Use when 주인님 shares an inspiration, video/article link or sum
 ## 찾을 때
 Google Drive `search_files`로 볼트 안에서 제목·본문 검색 후 짧게 목록으로 보여준다.
 
+## 먼저 꺼내 주기 (주인님이 안 물어도)
+- 무언가 만들거나 고치는 일을 시작할 때, 볼트 `인사이트/AI도구`에서 관련 스크랩을 검색한다 (핵심어 + `use_when`).
+- 쓸 만한 게 있으면 작업 전에 한 줄로 제안. 없으면 조용히 진행.
+
 ## 원칙
+- **평가는 냉정하게, 좋은 건 적극 추천.** 판정은 솔직히 내리고, 「시도할 만함」이면 「4. 적용 계획」에 바로 할 첫 단계를 적고 실행하거나 담당에게 넘긴다. 「일부 채택」은 좋은 부분만 바로 쓴다. 「보류·해당 없음」은 이유 한 줄 + 대안.
 - 확인 안 된 정보는 노트 끝에 ⚠️로 표시
 - 기존 노트를 고치거나 지울 때는 먼저 주인님에게 확인
 - Google Drive 커넥터가 없는 세션이면 그렇다고 말하고, 노트 내용을 채팅으로 주어 주인님이 붙여넣게 한다
