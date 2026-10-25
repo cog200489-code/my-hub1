@@ -15,6 +15,10 @@ description: Use when building or extending a 더이룸 3D 교과서 page — a 
 4. **교육과정 용어는 한국 중·고 교과서 표현**을 쓴다(예: 일주 운동, 천구, 역학적 에너지 보존). 영어 용어는 괄호로만.
 5. **학생 개인정보를 담지 않는다.** 이름·점수 저장이 필요하면 원격수업팀장과 상의한다.
 
+## 숫자·용어 확인에서 자주 틀리는 것
+- 「열로 빠짐」은 화력·원자력에만 맞다. 풍력·태양광의 손실은 대부분 열이 아니다(못 받은 바람, 반사된 빛) → 「다른 에너지로 빠짐(주로 열)」처럼 쓴다
+- 학년 표기(중1~3)는 교육과정 개정(2015 → 2022)에 따라 단원 위치가 다르다. 선생님 확인 전에는 「중학 과학」으로만 쓴다
+
 ## 단원 틀 (페이지 구조)
 - 펼친 책 모양: **왼쪽 = 3D 장면**, **오른쪽 = 설명·조작판·미션** (폰에서는 위아래로 쌓기)
 - 조작판: 시점 버튼(밖에서/정면/위 등), 시간 재생·슬라이더, 핵심 변수 1~2개(위도, 에너지원 등), 켜고 끄기(자취·라벨)
@@ -26,14 +30,16 @@ description: Use when building or extending a 더이룸 3D 교과서 page — a 
 새 단원은 시제품 아티팩트를 `Artifact action:"read"`로 읽어 와서 **장면·변수·미션 데이터만 바꾼다.** 공통 부분(책 레이아웃, 도장, 조작판 스타일)은 그대로 둔다.
 
 ## Three.js를 아티팩트에서 쓰는 법
-- 아티팩트는 정해진 CDN만 허용: `cdnjs.cloudflare.com`(우선), `cdn.jsdelivr.net/npm/`, `unpkg.com`. **버전을 정확히 고정**한다(예: `three@0.160.0`). 최신 2주 이내 버전 금지.
-- ES 모듈을 쓸 때는 `<script type="importmap">`으로 `three`와 `three/addons/`를 jsDelivr 고정 버전 주소에 연결하고 `OrbitControls`는 addons에서 가져온다.
-- 텍스처·모델 파일은 외부에서 못 불러온다 → 도형(구·원기둥·선)으로 만들거나 data URI로 넣는다. 글자 라벨은 CSS2D/HTML 오버레이나 캔버스 텍스처.
-- 화면 테마(밝음/어두움) 토큰을 지키고, `prefers-reduced-motion`이면 자동 회전을 멈춘다.
+- **시제품과 같은 방식으로 통일**: `https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js` + `.../three@0.128.0/examples/js/controls/OrbitControls.js` (UMD, 전역 `THREE`). 단원마다 버전을 바꾸지 않는다. 버전을 올릴 때는 모든 단원을 같이 올린다.
+- 아티팩트는 정해진 CDN만 허용: `cdnjs.cloudflare.com`, `cdn.jsdelivr.net/npm/`, `unpkg.com`. 버전은 정확히 고정, 최신 2주 이내 버전 금지.
+- 텍스처·모델 파일은 외부에서 못 불러온다 → 도형(구·원기둥·선)으로 만들거나 캔버스 텍스처·data URI로. 글자는 캔버스 텍스처(폰트 로드 뒤 다시 그리기).
+- WebGL이 안 되는 기기용 안내 문구를 둔다(시제품의 `.fail` 처리).
+- 화면 테마(밝음/어두움) 토큰을 지키고, `prefers-reduced-motion`이면 자동 재생을 멈춘다.
 
 ## 폰·저사양 태블릿 성능
 - `renderer.setPixelRatio(Math.min(devicePixelRatio, 2))`, 그림자는 꼭 필요할 때만
-- 화면에 안 보이거나 정지 상태면 렌더 루프를 멈춘다(`IntersectionObserver` + 변경 있을 때만 그리기)
+- **렌더 루프를 계속 돌리지 않는다**: 재생 중이거나 손으로 돌리는 중일 때만 그리고, 멈춤·화면 밖(`IntersectionObserver`)·탭 숨김(`visibilitychange`)이면 쉰다. 계속 돌리면 폰이 뜨거워지고 배터리가 빨리 닳는다
+- 그림자(`shadowMap`)는 폰에서 끈다(`matchMedia('(pointer:coarse)')`)
 - 폴리곤은 적게(구 segment 32 이하), 별 수천 개는 `Points` 하나로
 - 터치: OrbitControls 한 손가락 회전·두 손가락 확대, 페이지 스크롤과 싸우지 않게 캔버스에 `touch-action: none`은 3D 영역에만
 
