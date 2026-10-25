@@ -31,6 +31,7 @@ description: Use when 주인님 shares an inspiration, video/article link or sum
    channel: 채널/작성자
    scrap_date: YYYY-MM-DD
    verdict: 시도할 만함 | 일부 채택 | 보류 | 해당 없음
+   use_when: 이 노트를 꺼낼 상황 (예: 오래 걸리는 작업 도구 만들 때)
    tags: [스크랩, 주제 태그들]
    ---
    # 제목
@@ -50,6 +51,10 @@ description: Use when 주인님 shares an inspiration, video/article link or sum
 
 ## 찾을 때
 Google Drive `search_files`로 볼트 안에서 제목·본문 검색 후 짧게 목록으로 보여준다.
+
+## 먼저 꺼내 주기 (주인님이 안 물어도)
+- 무언가 만들거나 고치는 일을 시작할 때, 볼트 `인사이트/AI도구`에서 관련 스크랩을 검색한다 (핵심어 + `use_when`).
+- 쓸 만한 게 있으면 작업 전에 한 줄로 제안. 없으면 조용히 진행.
 
 ## 원칙
 - 확인 안 된 정보는 노트 끝에 ⚠️로 표시
