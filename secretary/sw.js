@@ -1,4 +1,4 @@
-const C="fs-v21";
+const C="fs-v22";
 self.addEventListener("install",e=>{self.skipWaiting();e.waitUntil(caches.open(C).then(c=>c.addAll(["./","index.html","icon.svg","icon-192.png","icon-512.png","manifest.webmanifest"])))});
 self.addEventListener("activate",e=>e.waitUntil(self.clients.claim()));
 self.addEventListener("fetch",e=>{const u=new URL(e.request.url);if(e.request.method!=="GET"||u.origin!==location.origin)return;
