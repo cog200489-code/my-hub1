@@ -32,7 +32,7 @@ jobs:
           mkdir _site
           find . \( -path ./_site -o -path ./brain -o -path './.*' \) -prune -o -type f \
             \( -iname '*.html' -o -iname '*.css' -o -iname '*.js' -o -iname '*.png' -o -iname '*.jpg' \
-               -o -iname '*.jpeg' -o -iname '*.gif' -o -iname '*.webp' -o -iname '*.svg' -o -iname '*.ico' \
+               -o -iname '*.jpeg' -o -iname '*.gif' -o -iname '*.webp' -o -iname '*.svg' -o -iname '*.ico' -o -iname '*.webmanifest' \
                -o -iname '*.mp4' -o -iname '*.webm' -o -iname '*.mp3' -o -iname '*.pdf' \) -exec cp --parents {} _site/ \;
           find _site -type f
       - name: Upload site
