@@ -180,7 +180,7 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.9</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v4.0</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -244,8 +244,13 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const localDate=iso=>{const d=iso?new Date(iso):new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
 const LS={get(k,d){try{const v=localStorage.getItem("fs_"+k);return v==null?d:JSON.parse(v)}catch(_){return d}},set(k,v){try{localStorage.setItem("fs_"+k,JSON.stringify(v))}catch(_){}}};
 
-const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12,stt:"auto",chunk:15,azKey:"",azRegion:"koreacentral",azDiar:false,obVault:"옵시디언 기본 볼트",obFolder:"학원운영/1급비서관 기록"},LS.get("cfg",{}));
+const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12,stt:"auto",chunk:15,azKey:"",azRegion:"koreacentral",azDiar:false,ckey:"",cmodel:"claude-sonnet-5-5",engine:"auto",obVault:"옵시디언 기본 볼트",obFolder:"학원운영/1급비서관 기록"},LS.get("cfg",{}));
 if(!/^(auto|gemini)/.test(cfg.gmodel)) cfg.gmodel="auto";
+if(!/^claude-/.test(cfg.cmodel)) cfg.cmodel="claude-sonnet-5-5";
+/* v4.0: 조언·요약 엔진. 자동 = 클로드 키가 있으면 클로드(맥스 API 크레딧), 없으면 제미나이. 받아쓰기(녹음 방식)는 소리라서 늘 제미나이. */
+function hasEngine(){return !!(cfg.gkey||cfg.ckey)}
+let claudeDownUntil=0;
+function engineNow(){ const e=cfg.engine==="auto"?(cfg.ckey?"claude":"gemini"):cfg.engine; if(e==="claude"&&(!cfg.ckey||Date.now()<claudeDownUntil)) return cfg.gkey?"gemini":"claude"; if(e==="gemini"&&!cfg.gkey) return cfg.ckey?"claude":"gemini"; return e }
 const S={notes:[],mon:null,live:false,paused:false,mode:"auto",lines:[],interim:"",cards:[],last:null,moods:[],setup:{},startedAt:null,memory:[],analyzedUpTo:0,busy:false,lastRun:0};
 
 /* ---------------- example state ---------------- */
@@ -502,11 +507,30 @@ function addLine(text,voice){
   renderScript(); scheduleAnalyze();
 }
 
-/* ---------------- Claude API ---------------- */
+/* ---------------- AI 호출: 클로드(v4.0) / 제미나이 ---------------- */
+const CLAUDE_SYS=`당신은 더이룸학원 원장의 실시간 대화 비서입니다. 답은 반드시 요청받은 JSON 하나만 출력합니다. 설명·머리말·코드 울타리(\`\`\`)를 붙이지 않습니다. 모든 글은 한국어로 씁니다.`;
+async function claudeAI(prompt,maxTokens,effort){
+  const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+    headers:{"content-type":"application/json","x-api-key":cfg.ckey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true","anthropic-beta":"server-side-fallback-2026-07-01"},
+    body:JSON.stringify({model:cfg.cmodel,max_tokens:Math.max(maxTokens*3,6000),system:CLAUDE_SYS,messages:[{role:"user",content:prompt}],output_config:{effort:effort||"medium"},fallbacks:"default"})});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok){const e=new Error(j?.error?.message||("HTTP "+r.status));e.status=r.status;e.engine="claude";throw e}
+  if(j.stop_reason==="refusal"){const e=new Error("클로드가 이 요청을 거절했습니다");e.status=0;e.engine="claude";e.refusal=true;throw e}
+  return (j.content||[]).filter(b=>b.type==="text").map(b=>b.text||"").join("");
+}
 const FALLBACK=["gemini-flash-latest","gemini-3.5-flash","gemini-flash-lite-latest","gemini-3.5-flash-lite"];
 let modelOrder=null;
 function models(){ if(cfg.gmodel!=="auto") return [cfg.gmodel,...FALLBACK.filter(m=>m!==cfg.gmodel)]; return modelOrder||FALLBACK; }
-async function ai(prompt,maxTokens,temp){
+/* 글 요청은 엔진 설정대로(클로드 우선). 클로드가 실패하면 2분 동안 제미나이로 넘기고 화면에 알림. 소리(배열)는 늘 제미나이. */
+async function ai(prompt,maxTokens,temp,effort){
+  if(typeof prompt==="string"&&engineNow()==="claude"){
+    try{ return await claudeAI(prompt,maxTokens,effort) }
+    catch(e){ if(!cfg.gkey) throw e;
+      /* 키 오류·크레딧 소진은 다시 시도해도 똑같으니 이 대화(또는 설정 저장) 전까지 제미나이 고정, 그 밖의 일시 오류는 2분 뒤 다시 클로드 */
+      const permanent=e.status===401||e.status===403||e.status===402||(e.status===400&&/credit|balance|billing/i.test(e.message));
+      claudeDownUntil=permanent?Infinity:Date.now()+120000; apiError(e); }
+  }
+  if(!cfg.gkey){const e=new Error("제미나이 키 없음");e.status=0;throw e}
   const parts=Array.isArray(prompt)?prompt:[{text:prompt}];
   let lastErr=null;
   for(const m of models()){
@@ -528,6 +552,15 @@ async function ai(prompt,maxTokens,temp){
 function mask(t){let o=String(t??""); people().forEach(n=>{const a=aliasOf(n); for(const part of [n,...n.split(/\s+/).filter(x=>x.length>=2&&!/^(선생|선생님|어머님|아버님|학생|씨|님)$/.test(x))]) o=o.split(part).join(a)}); return o}
 function parseJSON(t){const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<a)return null;try{return JSON.parse(t.slice(a,b+1))}catch(_){return null}}
 function apiError(e){
+  if(e.engine==="claude"){
+    const tail=cfg.gkey?(claudeDownUntil===Infinity?" 이 대화는 제미나이로 조언을 받습니다.":" 2분 동안 제미나이로 조언을 받습니다."):"";
+    let msg; if(e.status===401||e.status===403) msg="클로드 API 키가 맞지 않습니다. 설정에서 다시 넣어 주세요.";
+    else if(e.status===402||(e.status===400&&/credit|balance|billing/i.test(e.message))) msg="클로드 API 크레딧이 다 떨어졌습니다.";
+    else if(e.status===429) msg="클로드 요청 한도에 걸렸습니다. 잠시 뒤 다시 씁니다.";
+    else if(e.refusal) msg="클로드가 이 내용의 요청을 거절했습니다.";
+    else msg="클로드 연결 실패: "+String(e.message||"").slice(0,50);
+    $("#hint").innerHTML='<span class="err">'+esc(msg+tail)+'</span>'; $("#hint").classList.remove("live-hide"); return;
+  }
   if(e.status===400&&/API key|API_KEY/i.test(e.message)||e.status===401||e.status===403) $("#hint").innerHTML='<span class="err">제미나이 키가 맞지 않습니다. 설정에서 키를 다시 넣어 주세요. 받아쓰기는 계속됩니다.</span>';
   else if(e.status===429) setThinking("무료 한도에 걸려 잠시 쉬는 중");
   else setThinking("조언 실패: "+e.message.slice(0,60));
@@ -584,7 +617,7 @@ function SPK(){const p=people(); const multi=p.length>1?` 참석자는 원장 �
 function SPK0(){return `[미정] 줄은 말투와 내용으로 화자를 판별하세요(${M().me}). me=원장, other=상대. "원장 수정" 표시 줄은 원장이 직접 고친 정확한 내용이니 가장 믿을 만한 근거로 삼으세요.`}
 let analyzeTimer=null;
 function scheduleAnalyze(force){
-  if(!cfg.gkey) return;
+  if(!hasEngine()) return;
   clearTimeout(analyzeTimer);
   const since=Date.now()-S.lastRun, gap=(listenMode()==="audio"?Math.max(cfg.interval,30):Math.max(cfg.interval,20))*1000;
   const newCount=S.lines.length-S.analyzedUpTo;
@@ -616,7 +649,7 @@ ${MONITOR_SPEC()},
 ${INSIGHT_SPEC()},
 ${NOTE_SPEC()}}`;
   try{
-    const r=parseJSON(await ai(prompt,3200,0.35));
+    const r=parseJSON(await ai(prompt,3200,0.35,"medium"));
     if(r){
       applySpeakers(r);
       Object.assign(r,unmask({...r,speakers:undefined})); r._t=new Date().toTimeString().slice(0,5); S.mon=r; if(r.myStance&&!/불확실/.test(r.myStance)) S.stance=r.myStance; S.moods.push(Math.max(1,Math.min(5,+r.mood?.level||3)));
@@ -624,14 +657,14 @@ ${NOTE_SPEC()}}`;
     }
     setThinking("");
   }catch(e){apiError(e)}
-  finally{S.busy=false; $("#noteThinking").textContent=""; if(S.live&&S.lines.length>S.analyzedUpTo) scheduleAnalyze()}
+  finally{S.busy=false; $("#noteThinking").textContent=""; if(/분석 중/.test($("#thinking").textContent)) setThinking(""); if(S.live&&S.lines.length>S.analyzedUpTo) scheduleAnalyze()}
 }
 function NOTE_SPEC(){return `"notes":[{"kind":"${M().kinds}","trigger":"쪽지를 쓰게 만든 말 요약(25자 이내)","head":"원장이 바로 쓸 핵심 한 문장(존댓말 또는 상황에 맞는 말투)","points":["뒷받침 포인트 2~3개, 각 25자 이내"],"facts":["수치·제도·사례 근거. 확실한 것만, 없으면 빈 배열"],"search":"원장이 확인하면 좋을 네이버 검색어 하나 또는 빈 문자열"}]`}
 let advBusy=false;
 async function advise(){
   const th=$("#noteThinking");
   if(advBusy) return;
-  if(!cfg.gkey){th.textContent="설정에서 키를 넣어 주세요";return}
+  if(!hasEngine()){th.textContent="설정에서 키를 넣어 주세요";return}
   if(!S.lines.length){th.textContent="아직 받아쓴 말이 없습니다";return}
   advBusy=true; th.textContent="할 말 쓰는 중…"; $("#askBtn").disabled=true;
   const mon=S.mon?`\n지금 상황판: ${S.mon.summary||""} / 상대 기분 ${S.mon.mood?.label||""} / 걱정: ${(S.mon.concerns||[]).join(", ")}`:"";
@@ -648,10 +681,10 @@ ${fullTranscript()}
 {"speakers":{"L번호":"${speakerChoices()}"},
 "trigger":"지금 상황 요약(25자 이내)","head":"원장이 그대로 읽을 다음 한마디(존댓말, 2문장 이내)","points":["흐름이 바뀌면 쓸 대안 또는 이어갈 말(최대 2개)"],"facts":["근거(확실한 것만)"],"search":"확인용 네이버 검색어 또는 빈 문자열","caution":"지금 조심할 점 또는 빈 문자열"}`;
   try{
-    const r=parseJSON(await ai(prompt,1200,0.6));
+    const r=parseJSON(await ai(prompt,1200,0.6,"medium"));
     if(r){applySpeakers(r); renderScript(); addNotes([r],"할 말"); $("#notes").scrollTop=0}
     th.textContent="";
-  }catch(e){ th.textContent=e.status===429?"무료 한도에 걸렸습니다. 잠시 뒤 다시":"쪽지를 받지 못했습니다" }
+  }catch(e){ th.textContent=e.status===429?"요청 한도에 걸렸습니다. 잠시 뒤 다시":"쪽지를 받지 못했습니다" }
   finally{advBusy=false; $("#askBtn").disabled=false}
 }
 /* ---------------- 녹음 + 제미나이 받아쓰기 (폰: 소리 없이 계속 녹음) ---------------- */
@@ -856,8 +889,10 @@ document.addEventListener("visibilitychange",()=>{if(document.visibilityState===
 $("#setup").addEventListener("submit",e=>{
   e.preventDefault(); if(S.live) return;
   if(!SR&&listenMode()==="web"){openSheet("이 브라우저는 받아쓰기를 지원하지 않습니다",`<p>크롬(Chrome)으로 이 주소를 열어 주세요. 삼성 인터넷이나 사파리는 연속 받아쓰기를 지원하지 않습니다.</p>`,[["닫기",closeSheet]]);return}
-  if(!cfg.gkey){openSettings(true);return}
+  if(!hasEngine()){openSettings(true);return}
+  if(listenMode()==="audio"&&!cfg.gkey){openSettings(true);return}
   if(cfg.stt==="azure"&&!cfg.azKey){openSettings(true);return}
+  claudeDownUntil=0;
   sttOverride=null; for(const k in AZ_VOICE) delete AZ_VOICE[k]; azFails=0;
   const ty=$("#pType").value; const nm=$("#pName").value.trim(); S.setup={type:ty,name:nm,people:nm.split(/[,，、]/).map(x=>x.trim()).filter(Boolean).slice(0,10),role:MODES[ty].partner,purpose:$("#pPurpose").value.trim()}; LS.set("lastType",ty);
   matchMemory();
@@ -899,7 +934,7 @@ async function finish(){
   openSheet("대화 정리 중",`<p class="thinking">${wasAudio?"마지막 말을 받아쓰고 ":""}대화를 요약하고 있습니다…</p>`,[]);
   if(wasAudio) await drainAudio();
   let sum=null;
-  if(S.lines.length&&cfg.gkey){
+  if(S.lines.length&&hasEngine()){
     try{
       const out=await ai(`${cfg.me}('나')와 ${people().length>1?people().map(aliasOf).join(', '):M().partner}의 대화 받아쓰기 기록입니다(오타 있음). 대화 종류: ${M().label}. 목적: ${mask(S.setup.purpose)||"미정"}.
 ${transcript(600)}
@@ -908,7 +943,7 @@ ${STANCE_RULE}
 {"title":"노트 제목(20자 이내)","partnerGuess":"상대가 누구인지(이름·소속·역할) 대화에서 드러난 대로 한 줄. 원장이 적어 둔 상대가 있으면 빈 문자열","purposeGuess":"이 대화의 목적 한 줄. 원장이 적어 둔 목적이 있으면 빈 문자열","myStance":"원장이 어느 편·어떤 역할이었는지 한 줄","oneLine":"한 줄 요약","summary":"핵심 요약 3~5문장",
 "points":["주요 내용"],"concerns":["${M().lists[0]}"],"promises":["약속·합의한 것 — 누가 약속했는지 앞에 적기(예: 현장 측: …)"],
 "followups":["다음에 할 일(누가·언제)"],"persona":["상대 성향 태그"],"moodFlow":"대화 중 상대 기분 변화 한 줄",
-"nextTip":"다음에 이 상대와 대화할 때 원장이 기억할 조언","tags":["옵시디언 태그(공백 없이, # 없이) 4~7개"]}`,3000);
+"nextTip":"다음에 이 상대와 대화할 때 원장이 기억할 조언","tags":["옵시디언 태그(공백 없이, # 없이) 4~7개"]}`,3000,undefined,"high");
       sum=unmask(parseJSON(out));
     }catch(e){}
   }
@@ -1040,9 +1075,21 @@ async function openSettings(first){
   const dir=canPickFolder?await IDB.get("vaultDir").catch(()=>null):null;
   openSheet(first?"처음 한 번만 설정해 주세요":"설정",`
     <div style="display:flex;flex-direction:column;gap:12px">
-      <label class="f">구글 제미나이 API 키 (무료, 이 기기에만 저장)<input id="sKey" type="password" placeholder="AIza..." value="${esc(cfg.gkey)}" autocomplete="off"></label>
+      <div class="box"><h3>조언·요약 엔진: 클로드 (v4.0)</h3>
+        <p class="small" style="margin:0 0 6px">상황판·쪽지·💡 지금 할 말·종료 요약을 클로드가 씁니다. 비용은 <b>맥스 요금제 API 크레딧</b>(월 200달러 중 1급 비서관 몫) 안에서. 키를 넣으면 엔진 '자동'이 클로드를 쓰고, 클로드가 막히면 그 호출만 제미나이로 넘깁니다. 상대 이름은 가명으로 바꿔 보냅니다.</p>
+        <label class="f">클로드 API 키 (이 기기에만 저장)<input id="sCKey" type="password" placeholder="sk-ant-..." value="${esc(cfg.ckey)}" autocomplete="off"></label>
+        <label class="f">클로드 모델<select id="sCModel">
+          <option value="claude-sonnet-5-5"${cfg.cmodel==="claude-sonnet-5-5"?" selected":""}>소넷 5.5 — 속도·깊이 균형 (권장, 30분 상담 약 3달러)</option>
+          <option value="claude-opus-5-5"${cfg.cmodel==="claude-opus-5-5"?" selected":""}>오퍼스 5.5 — 가장 깊음, 조금 느림 (약 6달러)</option>
+          <option value="claude-haiku-5-5"${cfg.cmodel==="claude-haiku-5-5"?" selected":""}>하이쿠 5.5 — 가장 빠르고 쌈 (약 0.15달러)</option></select></label>
+        <label class="f">엔진 고르기<select id="sEngine">
+          <option value="auto"${cfg.engine==="auto"?" selected":""}>자동 — 클로드 키가 있으면 클로드, 없으면 제미나이 (권장)</option>
+          <option value="claude"${cfg.engine==="claude"?" selected":""}>클로드만</option>
+          <option value="gemini"${cfg.engine==="gemini"?" selected":""}>제미나이만 (무료)</option></select></label>
+        <p class="small" style="margin:6px 0 0">키 발급: claude.ai 설정 → 결제 → API 크레딧에서 콘솔 조직 연결 → <a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a> → 워크스페이스 「1급 비서관」 → API 키 만들기. 충전·자동 재충전은 켜지 마세요.</p></div>
+      <label class="f">구글 제미나이 API 키 (무료, 이 기기에만 저장) — 녹음 방식 받아쓰기·클로드 비상용<input id="sKey" type="password" placeholder="AIza..." value="${esc(cfg.gkey)}" autocomplete="off"></label>
       <p class="small" style="margin:-6px 0 0">키 발급: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> → Create API key. 결제 정보는 넣지 마세요(넣으면 유료로 바뀝니다).</p>
-      <label class="f">조언 엔진<select id="sModel">
+      <label class="f">제미나이 모델<select id="sModel">
         <option value="auto"${cfg.gmodel==="auto"?" selected":""}>자동 (권장)</option>
         <option value="gemini-flash-lite-latest"${cfg.gmodel==="gemini-flash-lite-latest"?" selected":""}>Flash-Lite — 빠르고 무료 한도 넉넉</option>
         <option value="gemini-flash-latest"${cfg.gmodel==="gemini-flash-latest"?" selected":""}>Flash — 조언이 더 깊음</option></select></label>
@@ -1073,16 +1120,17 @@ async function openSettings(first){
 function saveSettings(){
   cfg.gkey=$("#sKey").value.trim(); cfg.gmodel=$("#sModel").value; modelOrder=null; cfg.interval=+$("#sInt").value; cfg.stt=$("#sStt").value; cfg.chunk=+$("#sChunk").value; cfg.me=$("#sMe").value.trim()||"천양진 원장";
   cfg.azKey=$("#sAzKey").value.trim(); cfg.azRegion=$("#sAzRegion").value; cfg.azDiar=$("#sAzDiar").checked;
+  cfg.ckey=$("#sCKey").value.trim(); cfg.cmodel=$("#sCModel").value; cfg.engine=$("#sEngine").value; claudeDownUntil=0;
   if($("#sObV")){cfg.obVault=$("#sObV").value.trim()||"옵시디언 기본 볼트"; cfg.obFolder=$("#sObF").value.trim();}
   LS.set("cfg",cfg); closeSheet();
-  if(cfg.gkey&&!S.live) $("#hint").textContent="설정을 저장했습니다. 상담 시작을 누르세요.";
+  if(hasEngine()&&!S.live) $("#hint").textContent="설정을 저장했습니다. 조언 엔진: "+(engineNow()==="claude"?"클로드":"제미나이")+" · 상담 시작을 누르세요.";
 }
 $("#setBtn").addEventListener("click",()=>openSettings(false));
 
 /* ---------------- boot ---------------- */
 checkDraft(); refreshNames(); try{$("#pType").value=LS.get("lastType","consult")}catch(_){}; renderScript(); renderBrief(); renderNotes();
 if(!SR&&listenMode()==="web") $("#hint").innerHTML='<span class="err">이 브라우저는 연속 받아쓰기를 지원하지 않습니다. 크롬으로 열어 주세요.</span>';
-else if(!cfg.gkey) $("#hint").textContent="처음 한 번 '설정'에서 제미나이 무료 키를 넣어 주세요. 그다음부터는 상담 시작만 누르면 됩니다.";
+else if(!hasEngine()) $("#hint").textContent="처음 한 번 '설정'에서 클로드 또는 제미나이 키를 넣어 주세요. 그다음부터는 상담 시작만 누르면 됩니다.";
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
