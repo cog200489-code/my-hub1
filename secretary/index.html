@@ -180,7 +180,7 @@ a{color:var(--me)}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.8</small></h1>
+    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v3.9</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -244,7 +244,7 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const localDate=iso=>{const d=iso?new Date(iso):new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10)};
 const LS={get(k,d){try{const v=localStorage.getItem("fs_"+k);return v==null?d:JSON.parse(v)}catch(_){return d}},set(k,v){try{localStorage.setItem("fs_"+k,JSON.stringify(v))}catch(_){}}};
 
-const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12,stt:"auto",chunk:15,obVault:"옵시디언 기본 볼트",obFolder:"학원운영/1급비서관 기록"},LS.get("cfg",{}));
+const cfg=Object.assign({gkey:"",gmodel:"auto",me:"천양진 원장",interval:12,stt:"auto",chunk:15,azKey:"",azRegion:"koreacentral",azDiar:false,obVault:"옵시디언 기본 볼트",obFolder:"학원운영/1급비서관 기록"},LS.get("cfg",{}));
 if(!/^(auto|gemini)/.test(cfg.gmodel)) cfg.gmodel="auto";
 const S={notes:[],mon:null,live:false,paused:false,mode:"auto",lines:[],interim:"",cards:[],last:null,moods:[],setup:{},startedAt:null,memory:[],analyzedUpTo:0,busy:false,lastRun:0};
 
@@ -280,6 +280,17 @@ function renderScript(){
   if(S.interim) h+=`<div class="line interim"><span class="who unk">…</span><p>${esc(S.interim)}</p></div>`;
   el.innerHTML=h||`<p class="empty">듣고 있습니다. 말씀을 시작하시면 여기에 받아 적습니다.</p>`;
   if(atBottom||!real) el.scrollTop=el.scrollHeight;
+}
+/* v3.9: 받아쓰는 중인 글(회색 기울임)만 바꿀 때는 속기록 전체를 다시 그리지 않는다 — 폰에서 줄이 많아지면 전체 다시 그리기가 느려짐 */
+function renderInterim(){
+  if(editing>=0) return;
+  const el=$("#script"); const real=S.live||S.lines.length; if(!real){renderScript();return}
+  let n=el.querySelector(".interim");
+  if(!S.interim){ if(n) n.remove(); if(!S.lines.length&&!el.children.length) renderScript(); return }
+  const atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<60;
+  if(!n){ el.querySelector(".empty")?.remove(); n=document.createElement("div"); n.className="line interim"; n.innerHTML='<span class="who unk">…</span><p></p>'; el.appendChild(n) }
+  n.querySelector("p").textContent=S.interim;
+  if(atBottom) el.scrollTop=el.scrollHeight;
 }
 const EX_MON={summary:"성적 하락으로 불안한 상태에서 학원 이동까지 고민 중입니다.",mood:{label:"불안·실망",level:2,signal:"'위축됐어요', '옮겨야 하나'"},
  emotions:["불안","실망","망설임"],engagement:4,trust:3,resistance:3,concerns:["수학 4등급","아이 자신감 하락"],needs:["원인 설명","구체적 대책"],
@@ -468,7 +479,7 @@ function startRec(){
       const r=e.results[i]; const txt=r[0].transcript.trim();
       if(r.isFinal){ if(txt) addLine(txt) } else interim+=txt+" ";
     }
-    S.interim=interim.trim(); renderScript();
+    S.interim=interim.trim(); renderInterim();
   };
   rec.onerror=e=>{
     if(e.error==="not-allowed"||e.error==="service-not-allowed"){
@@ -482,11 +493,12 @@ function startRec(){
 }
 function stopRec(){S.interim="";try{rec&&rec.stop()}catch(_){}}
 function renumber(){S.lines.forEach((l,k)=>l.id="L"+(k+1))}
-function addLine(text){
+function addLine(text,voice){
   const now=Date.now(); if(text===lastFinal.text&&now-lastFinal.at<4000) return; lastFinal={text,at:now};
   const t=new Date().toTimeString().slice(0,8);
   const fixed=S.mode!=="auto";
-  S.lines.push({id:"L"+(S.lines.length+1),spk:fixed?S.mode:"?",text,t,fixed});
+  const l={id:"L"+(S.lines.length+1),spk:fixed?S.mode:"?",text,t,fixed}; if(voice) l.voice=voice;
+  S.lines.push(l);
   renderScript(); scheduleAnalyze();
 }
 
@@ -643,7 +655,9 @@ ${fullTranscript()}
   finally{advBusy=false; $("#askBtn").disabled=false}
 }
 /* ---------------- 녹음 + 제미나이 받아쓰기 (폰: 소리 없이 계속 녹음) ---------------- */
-function listenMode(){return cfg.stt==="auto"?(IS_ANDROID||!SR?"audio":"web"):cfg.stt}
+/* v3.9: 애저 키가 있으면 '자동'은 폰·노트북 모두 애저 실시간. 애저가 고장 나면 그 대화 동안만 sttOverride로 다른 방식으로 넘어간다. */
+let sttOverride=null;
+function listenMode(){ if(sttOverride) return sttOverride; if(cfg.stt==="auto") return cfg.azKey?"azure":(IS_ANDROID||!SR?"audio":"web"); return cfg.stt }
 let media=null, mr=null, actx=null, levelTimer=null, chunkTimer=null, voiced=0, chunkQ=[], chunkBusy=false, chunkStart=0, tickTimer=null;
 function pickMime(){if(!window.MediaRecorder)return null;for(const m of ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4"]) if(MediaRecorder.isTypeSupported(m)) return m; return ""}
 async function startAudio(){
@@ -679,7 +693,7 @@ setInterval(()=>{if(S.live&&!S.paused&&S.mon) renderBrief()},60000);
 function renderListening(){
   if(listenMode()!=="audio"||!S.live) return;
   const sec=Math.round((Date.now()-chunkStart)/1000);
-  S.interim=S.paused?"":`🎙 듣는 중 ${sec}초${chunkQ.length||chunkBusy?" · 받아쓰는 중…":""}`; renderScript();
+  S.interim=S.paused?"":`🎙 듣는 중 ${sec}초${chunkQ.length||chunkBusy?" · 받아쓰는 중…":""}`; renderInterim();
 }
 function b64(blob){return new Promise((res,rej)=>{const f=new FileReader();f.onload=()=>res(String(f.result).split(",")[1]);f.onerror=rej;f.readAsDataURL(blob)})}
 async function pumpChunks(){
@@ -723,8 +737,74 @@ function cleanChunk(lines){
 }
 async function drainAudio(){for(let i=0;i<120&&(chunkQ.length||chunkBusy);i++) await new Promise(z=>setTimeout(z,500))}
 
+/* ---------------- v3.9: 애저 실시간 받아쓰기 (폰·노트북 공통 — 소리 없이 1~2초 안에 뜸, 매달 5시간 무료) ---------------- */
+const AZ_SDK="https://cdn.jsdelivr.net/npm/microsoft-cognitiveservices-speech-sdk@1.53.0/distrib/browser/microsoft.cognitiveservices.speech.sdk.bundle-min.js";
+let azLoad=null, az=null, azRestart=null, azFails=0, azStopping=false; const AZ_VOICE={};
+function loadAzure(){
+  if(window.SpeechSDK) return Promise.resolve(window.SpeechSDK);
+  return azLoad=azLoad||new Promise((res,rej)=>{const s=document.createElement("script");s.src=AZ_SDK;s.async=true;
+    s.onload=()=>window.SpeechSDK?res(window.SpeechSDK):rej(new Error("애저 받아쓰기 모듈이 올라오지 않았습니다"));
+    s.onerror=()=>{azLoad=null;s.remove();rej(new Error("애저 받아쓰기 모듈을 내려받지 못했습니다. 인터넷을 확인해 주세요"))};
+    document.head.appendChild(s)});
+}
+/* 애저가 준 화자 표시(Guest-1, Guest-2…)를 목소리A/B로 — 제미나이 분석 프롬프트가 이미 '목소리A/B'를 쓴다 */
+function azVoice(id){ if(!id||/unknown/i.test(id)) return ""; if(!(id in AZ_VOICE)) AZ_VOICE[id]=ALIAS[Object.keys(AZ_VOICE).length]||"Z"; return AZ_VOICE[id] }
+async function startAzure(){
+  if(!cfg.azKey) throw Object.assign(new Error("애저 키가 없습니다"),{name:"NoKey"});
+  const SDK=await loadAzure();
+  const sc=SDK.SpeechConfig.fromSubscription(cfg.azKey,cfg.azRegion||"koreacentral");
+  sc.speechRecognitionLanguage="ko-KR";
+  try{sc.setProfanity(SDK.ProfanityOption.Raw)}catch(_){}            /* 욕설도 별표 없이 그대로 (상담 기록이므로) */
+  const diar=!!cfg.azDiar;
+  if(diar) try{sc.setProperty(SDK.PropertyId.SpeechServiceResponse_DiarizeIntermediateResults,"true")}catch(_){}
+  const ac=SDK.AudioConfig.fromDefaultMicrophoneInput();
+  const r=diar?new SDK.ConversationTranscriber(sc,ac):new SDK.SpeechRecognizer(sc,ac);
+  az=r; azStopping=false;
+  const onInterim=(s,e)=>{ if(az!==r) return; S.interim=String(e.result?.text||"").trim(); renderInterim() };
+  const onFinal=(s,e)=>{ if(az!==r) return; const res=e.result; if(!res) return;
+    if(res.reason===SDK.ResultReason.RecognizedSpeech){ const t=String(res.text||"").trim(); S.interim=""; azFails=0; if(t) addLine(t,diar?azVoice(res.speakerId):""); else renderInterim() }
+    else if(res.reason===SDK.ResultReason.NoMatch){ S.interim=""; renderInterim() } };
+  if(diar){ r.transcribing=onInterim; r.transcribed=onFinal } else { r.recognizing=onInterim; r.recognized=onFinal }
+  r.canceled=(s,e)=>{ if(az!==r) return; if(e.reason===SDK.CancellationReason.Error) azError(e.errorCode,e.errorDetails) };
+  r.sessionStopped=()=>{ if(az!==r) return; azScheduleRestart(1500) };
+  await new Promise((res,rej)=>diar?r.startTranscribingAsync(res,rej):r.startContinuousRecognitionAsync(res,rej));
+  setThinking("");
+}
+function stopAzure(release){
+  clearTimeout(azRestart); const r=az; az=null; azStopping=true;
+  if(S.interim&&!/^🎙/.test(S.interim)){addLine(S.interim)} S.interim=""; renderInterim();
+  if(!r) return;
+  const done=()=>{try{r.close()}catch(_){}};
+  try{ if(r.stopTranscribingAsync) r.stopTranscribingAsync(done,done); else r.stopContinuousRecognitionAsync(done,done) }catch(_){done()}
+}
+function azScheduleRestart(ms){
+  if(!S.live||S.paused) return; clearTimeout(azRestart);
+  azRestart=setTimeout(async()=>{ if(!S.live||S.paused||listenMode()!=="azure") return; const r=az; az=null; try{r&&r.close()}catch(_){}
+    setThinking("애저 다시 연결 중…"); try{await startAzure()}catch(e){azError(undefined,e&&e.message||String(e))} },ms);
+}
+function azError(code,details){
+  const d=String(details||""); const EC=window.SpeechSDK?.CancellationErrorCode||{};
+  if(code===EC.AuthenticationFailure||code===EC.Forbidden||/401|403|Authentication|Forbidden|WebSocket upgrade failed: Unauthorized/i.test(d)) azFallback("애저 키 또는 지역이 맞지 않습니다. 설정에서 확인해 주세요. 그동안은 예전 방식으로 받아씁니다.");
+  else if(code===EC.TooManyRequests||/quota|4429|exceeded|limit/i.test(d)) azFallback("애저 무료 5시간을 다 썼거나 한도에 걸렸습니다. 이번 대화는 예전 방식으로 받아씁니다.");
+  else if(/permission|NotAllowed|denied|microphone/i.test(d)){ S.paused=true; stopAzure(false); setThinking(""); setStatus("마이크 차단됨","paused"); $("#pauseBtn").textContent="다시 듣기";
+    $("#hint").innerHTML='<span class="err">마이크가 차단되어 있습니다. 주소창 왼쪽 아이콘 → 권한 → 마이크 허용 후 다시 듣기를 누르세요.</span>'; $("#hint").classList.remove("live-hide") }
+  else { azFails++; if(azFails<=5){ setThinking("애저 연결 끊김 · 다시 시도 "+azFails); azScheduleRestart(1500*azFails) } else azFallback("애저 연결이 계속 끊겨 예전 방식으로 받아씁니다. ("+d.slice(0,60)+")") }
+}
+function azFallback(msg){
+  stopAzure(false);
+  sttOverride=(cfg.gkey&&window.MediaRecorder)?"audio":(SR?"web":null);
+  $("#hint").innerHTML='<span class="err">'+esc(msg)+'</span>'; $("#hint").classList.remove("live-hide"); setThinking("");
+  if(sttOverride&&S.live&&!S.paused) startListen();
+}
+
 async function startListen(){
-  if(listenMode()==="audio"){
+  const m=listenMode();
+  if(m==="azure"){
+    setThinking("애저 연결 중…");
+    try{await startAzure()}catch(e){ const d=typeof e==="string"?e:(e&&e.message||""); if(e&&e.name==="NoKey"){S.paused=true;$("#pauseBtn").textContent="다시 듣기";openSettings(true)} else azError(undefined,d) }
+    return;
+  }
+  if(m==="audio"){
     try{await startAudio()}catch(e){
       S.paused=true; setStatus("마이크 차단됨","paused");
       $("#hint").innerHTML='<span class="err">'+(e.name==="NotSupported"?"이 브라우저는 녹음을 지원하지 않습니다. 크롬으로 열어 주세요.":"마이크가 차단되어 있습니다. 주소창 왼쪽 아이콘 → 권한 → 마이크 허용 후 다시 듣기를 누르세요.")+'</span>';
@@ -732,7 +812,7 @@ async function startListen(){
     }
   } else startRec();
 }
-function stopListen(release){ if(listenMode()==="audio") stopAudio(release); else stopRec(); }
+function stopListen(release){ const m=listenMode(); if(m==="azure") stopAzure(release); else if(m==="audio") stopAudio(release); else stopRec(); }
 /* ---------------- memory ---------------- */
 function sessions(){return LS.get("sessions",[])}
 function refreshNames(){const ns=[...new Set(sessions().map(s=>s.name).filter(Boolean))];$("#names").innerHTML=ns.map(n=>`<option value="${esc(n)}">`).join("")}
@@ -771,12 +851,14 @@ $("#pauseBtn").addEventListener("click",()=>{
 
 let wake=null;
 async function keepAwake(){try{wake=await navigator.wakeLock?.request("screen")}catch(_){}}
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.live){keepAwake(); if(!S.paused&&listenMode()==="web"){try{rec.start()}catch(_){}}}});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.live){keepAwake(); if(!S.paused&&listenMode()==="web"){try{rec.start()}catch(_){}} if(!S.paused&&listenMode()==="azure"&&!az) startListen()}});
 
 $("#setup").addEventListener("submit",e=>{
   e.preventDefault(); if(S.live) return;
   if(!SR&&listenMode()==="web"){openSheet("이 브라우저는 받아쓰기를 지원하지 않습니다",`<p>크롬(Chrome)으로 이 주소를 열어 주세요. 삼성 인터넷이나 사파리는 연속 받아쓰기를 지원하지 않습니다.</p>`,[["닫기",closeSheet]]);return}
   if(!cfg.gkey){openSettings(true);return}
+  if(cfg.stt==="azure"&&!cfg.azKey){openSettings(true);return}
+  sttOverride=null; for(const k in AZ_VOICE) delete AZ_VOICE[k]; azFails=0;
   const ty=$("#pType").value; const nm=$("#pName").value.trim(); S.setup={type:ty,name:nm,people:nm.split(/[,，、]/).map(x=>x.trim()).filter(Boolean).slice(0,10),role:MODES[ty].partner,purpose:$("#pPurpose").value.trim()}; LS.set("lastType",ty);
   matchMemory();
   Object.assign(S,{live:true,paused:false,lines:[],interim:"",cards:[],last:null,mon:null,notes:[],moods:[],analyzedUpTo:0,lastRun:0,stance:"",startedAt:new Date().toISOString()});
@@ -965,12 +1047,19 @@ async function openSettings(first){
         <option value="gemini-flash-lite-latest"${cfg.gmodel==="gemini-flash-lite-latest"?" selected":""}>Flash-Lite — 빠르고 무료 한도 넉넉</option>
         <option value="gemini-flash-latest"${cfg.gmodel==="gemini-flash-latest"?" selected":""}>Flash — 조언이 더 깊음</option></select></label>
       <p class="small" style="margin:-6px 0 0">상대 이름은 구글로 보내지 않고 '상대'로 바꿔 보냅니다. 무료 키는 구글이 대화 내용을 검토·학습에 쓸 수 있습니다.</p>
+      <div class="box"><h3>애저 실시간 받아쓰기 (v3.9)</h3>
+        <p class="small" style="margin:0 0 6px">마이크로소프트 애저 Speech. 소리 없이 1~2초 안에 글이 뜹니다. <b>매달 5시간 무료(F0)</b>. 키를 넣으면 받아쓰기 방식 '자동'에서 폰·노트북 모두 이 방식을 씁니다. 소리는 마이크로소프트 서버로 가서 글로 바뀝니다.</p>
+        <label class="f">애저 키 (이 기기에만 저장)<input id="sAzKey" type="password" placeholder="32자리 키" value="${esc(cfg.azKey)}" autocomplete="off"></label>
+        <label class="f">지역<select id="sAzRegion">${[["koreacentral","한국 중부 (권장)"],["japaneast","일본 동부"],["eastasia","동아시아(홍콩)"],["southeastasia","동남아시아(싱가포르)"],["eastus","미국 동부"],["westus2","미국 서부 2"],["westeurope","서유럽"]].map(([v,l])=>`<option value="${v}"${(cfg.azRegion||"koreacentral")===v?" selected":""}>${l} · ${v}</option>`).join("")}</select></label>
+        <label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="sAzDiar" style="width:auto"${cfg.azDiar?" checked":""}> 목소리로 화자 나누기 (실험 — 글이 조금 늦게 뜰 수 있음)</label>
+        <p class="small" style="margin:6px 0 0">키 발급: <a href="https://portal.azure.com" target="_blank" rel="noopener">portal.azure.com</a> → 리소스 만들기 → <b>Speech</b> → 가격 책정 계층 <b>F0(무료)</b>, 지역 Korea Central → 만든 뒤 「키 및 엔드포인트」에서 키 1 복사.</p></div>
       <label class="f">받아쓰기 방식<select id="sStt">
-        <option value="auto"${cfg.stt==="auto"?" selected":""}>자동 — 폰은 녹음 방식, 노트북은 크롬 받아쓰기 (권장)</option>
-        <option value="audio"${cfg.stt==="audio"?" selected":""}>녹음 방식 — 소리 없이 계속 녹음, 몇 초씩 늦게 뜸</option>
+        <option value="auto"${cfg.stt==="auto"?" selected":""}>자동 — 애저 키가 있으면 애저, 없으면 폰은 녹음 방식·노트북은 크롬 (권장)</option>
+        <option value="azure"${cfg.stt==="azure"?" selected":""}>애저 실시간 — 소리 없이 바로 뜸 (키 필요)</option>
+        <option value="audio"${cfg.stt==="audio"?" selected":""}>녹음 방식 — 제미나이로 받아쓰기, 20~40초 늦게 뜸</option>
         <option value="web"${cfg.stt==="web"?" selected":""}>크롬 받아쓰기 — 바로 뜨지만 폰에선 '띵' 소리 반복</option></select></label>
       <label class="f">녹음 방식: 한 번에 보내는 길이<select id="sChunk">${[10,15,20,30].map(n=>`<option value="${n}"${cfg.chunk===n?" selected":""}>${n}초</option>`).join("")}</select></label>
-      <label class="f">조언 갱신 간격 (크롬 받아쓰기)<select id="sInt">${[8,12,20,30].map(n=>`<option value="${n}"${cfg.interval===n?" selected":""}>${n}초</option>`).join("")}</select></label>
+      <label class="f">조언 갱신 간격 (애저·크롬 받아쓰기)<select id="sInt">${[8,12,20,30].map(n=>`<option value="${n}"${cfg.interval===n?" selected":""}>${n}초</option>`).join("")}</select></label>
       <label class="f">내 이름<input id="sMe" value="${esc(cfg.me)}"></label>
       ${canPickFolder?`<div class="box"><h3>옵시디언 볼트 자동 저장 (노트북)</h3>
         <p class="small" style="margin:0 0 6px">${dir?`지금 저장 폴더: <b>${esc(dir.name)}</b>`:"구글 드라이브의 볼트 폴더를 고르면 상담 노트가 자동으로 들어갑니다."} 볼트 안의 <b>학원운영/1급비서관 기록</b> 폴더를 고르면 밤에 상담 관리 솔루션으로 자동으로 넘어갑니다.</p>
@@ -983,6 +1072,7 @@ async function openSettings(first){
 }
 function saveSettings(){
   cfg.gkey=$("#sKey").value.trim(); cfg.gmodel=$("#sModel").value; modelOrder=null; cfg.interval=+$("#sInt").value; cfg.stt=$("#sStt").value; cfg.chunk=+$("#sChunk").value; cfg.me=$("#sMe").value.trim()||"천양진 원장";
+  cfg.azKey=$("#sAzKey").value.trim(); cfg.azRegion=$("#sAzRegion").value; cfg.azDiar=$("#sAzDiar").checked;
   if($("#sObV")){cfg.obVault=$("#sObV").value.trim()||"옵시디언 기본 볼트"; cfg.obFolder=$("#sObF").value.trim();}
   LS.set("cfg",cfg); closeSheet();
   if(cfg.gkey&&!S.live) $("#hint").textContent="설정을 저장했습니다. 상담 시작을 누르세요.";
