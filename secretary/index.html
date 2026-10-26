@@ -174,13 +174,22 @@ details.hist ol{padding-left:18px;margin:6px 0}
 .past time{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
 .err{color:var(--seal);font-size:13px}
 a{color:var(--me)}
+/* v4.1 메모 화면: 상대가 봐도 받아쓰기 메모로만 보이게 — 쪽지·상황판·비서 표시를 감추고 속기록만 */
+body.memo .seal,body.memo .p-notes,body.memo .p-mon,body.memo #askBtn,body.memo #hint,body.memo #exL,body.memo h1 small{display:none!important}
+body.memo .split{grid-template-columns:1fr;grid-template-rows:1fr;grid-template-areas:"script"}
+body.memo h1 .t{display:none} body.memo h1::before{content:"상담 기록"}
+body.memo .pane-h b::before{content:"상담 기록";}
+body.memo .pane-h b span{display:none}
+/* 끊긴 구간 줄 */
+.line.sys{grid-template-columns:1fr}
+.line.sys p{text-align:center;color:var(--muted);font-size:12.5px;border-top:1px dashed var(--line);border-bottom:1px dashed var(--line);padding:3px 0}
 </style>
 </head>
 <body>
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1>1급 비서관 <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v4.0</small></h1>
+    <h1><span class="t">1급 비서관</span> <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v4.1</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -199,7 +208,7 @@ a{color:var(--me)}
 
   <div class="split">
     <section class="pane p-script" aria-label="속기록">
-      <div class="pane-h"><b>속기록</b><span id="lineCount">0줄</span><span class="r"><span class="badge" id="exL">예시</span></span></div>
+      <div class="pane-h"><b><span>속기록</span></b><span id="lineCount">0줄</span><span class="r"><span class="badge" id="exL">예시</span></span></div>
       <div class="scroll" id="script"></div>
     </section>
     <section class="pane p-notes" aria-label="비서실 쪽지">
@@ -220,6 +229,7 @@ a{color:var(--me)}
       <button type="button" data-spk="other" aria-pressed="false">상대</button>
     </div>
     <button id="pauseBtn">일시정지</button>
+    <button id="memoBtn" title="쪽지·상황판을 감추고 받아쓴 글만 보입니다. 제목을 두 번 두드려도 바뀝니다.">메모 화면</button>
     <button id="askBtn" class="ask" title="지금 할 말을 쪽지로 받기">💡 지금 할 말</button>
     <span class="grow"></span>
     <button class="danger" id="endBtn">종료·정리</button>
@@ -272,7 +282,7 @@ function aliasOf(name){const i=people().indexOf(name);return i<0?name:(people().
 function nameOf(alias){if(!alias) return alias; if(alias==="상대"&&people().length===1) return people()[0]; const m=/^참석자([A-J])$/.exec(alias); if(m){const i=ALIAS.indexOf(m[1]); if(people()[i]) return people()[i]} return alias}
 function unmask(v){if(typeof v==="string"){let o=v; people().forEach((n,i)=>{o=o.split(people().length===1?"__none__":"참석자"+ALIAS[i]).join(n)}); return o} if(Array.isArray(v)) return v.map(unmask); if(v&&typeof v==="object"){const r={};for(const k in v)r[k]=unmask(v[k]);return r} return v}
 function otherName(l){return l.who||(people().length===1?people()[0]:(people().length?"상대":(S.setup.name||M().partner||"상대")))}
-function spkLabel(l){return l.spk==="me"?"나":l.spk==="other"?otherName(l):"판별중"}
+function spkLabel(l){return l.sys?"—":l.spk==="me"?"나":l.spk==="other"?otherName(l):"판별중"}
 let editing=-1;
 function renderScript(){
   const el=$("#script");
@@ -281,6 +291,7 @@ function renderScript(){
   const real=S.live||S.lines.length; const lines=real?S.lines:EX_LINES;
   $("#exL").hidden=!!real; $("#lineCount").textContent=S.lines.length+"줄";
   let h=lines.map((l,i)=>{const c=l.spk==="me"?"me":l.spk==="other"?"other":"unk";
+    if(l.sys) return `<div class="line sys"><p>${esc(l.text)}<time>${l.t||""}</time></p></div>`;
     return `<div class="line"><button class="who ${c}" data-i="${i}" title="눌러서 화자 바꾸기">${esc(spkLabel(l))}</button><p class="txt" data-i="${i}" title="눌러서 고치기">${esc(l.text)}${l.edited?'<span class="ed">✎</span>':""}<time>${l.t||""}</time></p></div>`}).join("");
   if(S.interim) h+=`<div class="line interim"><span class="who unk">…</span><p>${esc(S.interim)}</p></div>`;
   el.innerHTML=h||`<p class="empty">듣고 있습니다. 말씀을 시작하시면 여기에 받아 적습니다.</p>`;
@@ -465,6 +476,7 @@ function addNotes(arr,forcedKind){
   for(const n of (arr||[])){ if(!n||!n.head) continue;
     S.notes.push({id:"n"+(++noteSeq),t,kind:forcedKind||n.kind||"주의",trigger:n.trigger||"",head:n.head,points:[].concat(n.points||[]).slice(0,3),facts:[].concat(n.facts||[]).slice(0,3),search:n.search||"",caution:n.caution||""}) }
   if(S.notes.length>60) S.notes=S.notes.filter(n=>n.pinned).concat(S.notes.filter(n=>!n.pinned).slice(-50));
+  if(S.memo&&arr.length&&navigator.vibrate) try{navigator.vibrate([60,80,60])}catch(_){}   /* 메모 화면일 때 새 쪽지는 짧은 진동으로만 알림 */
   renderNotes();
 }
 function setStatus(t,cls){$("#statusText").textContent=t;const s=$("#status");s.classList.toggle("live",cls==="live");s.classList.toggle("paused",cls==="paused")}
@@ -484,7 +496,7 @@ function startRec(){
       const r=e.results[i]; const txt=r[0].transcript.trim();
       if(r.isFinal){ if(txt) addLine(txt) } else interim+=txt+" ";
     }
-    S.interim=interim.trim(); renderInterim();
+    S.interim=interim.trim(); if(S.interim) heard(); renderInterim();
   };
   rec.onerror=e=>{
     if(e.error==="not-allowed"||e.error==="service-not-allowed"){
@@ -503,7 +515,18 @@ function addLine(text,voice){
   const t=new Date().toTimeString().slice(0,8);
   const fixed=S.mode!=="auto";
   const l={id:"L"+(S.lines.length+1),spk:fixed?S.mode:"?",text,t,fixed}; if(voice) l.voice=voice;
-  S.lines.push(l);
+  S.lines.push(l); heard();
+  renderScript(); scheduleAnalyze();
+}
+/* v4.1 끊긴 구간: 마지막으로 소리를 받은 시각을 기억해 두고, 다른 앱·전화·연결 끊김 뒤 다시 들을 때 공백이 길면 속기록에 한 줄 남긴다(비서도 그 구간을 모른다는 걸 알게) */
+function heard(){S.lastHeard=Date.now()}
+function noteGap(why){
+  if(!S.live||!S.lastHeard) {heard();return}
+  const sec=Math.round((Date.now()-S.lastHeard)/1000); heard();
+  if(sec<8) return;
+  const t=new Date().toTimeString().slice(0,8);
+  const m=Math.floor(sec/60), txt=`[기록 끊김 ${m?m+"분 ":""}${sec%60}초 — ${why} 듣지 못한 구간]`;
+  S.lines.push({id:"L"+(S.lines.length+1),spk:"?",text:txt,t,fixed:true,sys:true});
   renderScript(); scheduleAnalyze();
 }
 
@@ -707,7 +730,7 @@ async function startAudio(){
 }
 function recordChunk(){
   if(!S.live||S.paused||!media) return;
-  const mime=pickMime(); const parts=[]; voiced=levelTimer&&!window.__RAW_MIC?0:999; chunkStart=Date.now();
+  const mime=pickMime(); const parts=[]; voiced=levelTimer&&!window.__RAW_MIC?0:999; chunkStart=Date.now(); heard();
   const r=new MediaRecorder(media,mime?{mimeType:mime,audioBitsPerSecond:32000}:undefined); mr=r;
   r.ondataavailable=e=>{if(e.data&&e.data.size)parts.push(e.data)};
   r.onstop=()=>{
@@ -752,7 +775,7 @@ JSON 하나만 출력: {"lines":[{"voice":"A|B","text":"들린 그대로"}]}`;
         const t=c.t.toTimeString().slice(0,8);
         for(const l of cleanChunk(r.lines)){
           const fixed=S.mode!=="auto"; S.lines.push({id:"L"+(S.lines.length+1),spk:fixed?S.mode:"?",text:l.text,t,fixed,voice:l.voice})}
-        setThinking(""); renderScript(); scheduleAnalyze();
+        heard(); setThinking(""); renderScript(); scheduleAnalyze();
       }
     }
   }finally{chunkBusy=false; renderListening()}
@@ -793,7 +816,7 @@ async function startAzure(){
   const ac=SDK.AudioConfig.fromDefaultMicrophoneInput();
   const r=diar?new SDK.ConversationTranscriber(sc,ac):new SDK.SpeechRecognizer(sc,ac);
   az=r; azStopping=false;
-  const onInterim=(s,e)=>{ if(az!==r) return; S.interim=String(e.result?.text||"").trim(); renderInterim() };
+  const onInterim=(s,e)=>{ if(az!==r) return; S.interim=String(e.result?.text||"").trim(); if(S.interim) heard(); renderInterim() };
   const onFinal=(s,e)=>{ if(az!==r) return; const res=e.result; if(!res) return;
     if(res.reason===SDK.ResultReason.RecognizedSpeech){ const t=String(res.text||"").trim(); S.interim=""; azFails=0; if(t) addLine(t,diar?azVoice(res.speakerId):""); else renderInterim() }
     else if(res.reason===SDK.ResultReason.NoMatch){ S.interim=""; renderInterim() } };
@@ -813,7 +836,7 @@ function stopAzure(release){
 function azScheduleRestart(ms){
   if(!S.live||S.paused) return; clearTimeout(azRestart);
   azRestart=setTimeout(async()=>{ if(!S.live||S.paused||listenMode()!=="azure") return; const r=az; az=null; try{r&&r.close()}catch(_){}
-    setThinking("애저 다시 연결 중…"); try{await startAzure()}catch(e){azError(undefined,e&&e.message||String(e))} },ms);
+    setThinking("애저 다시 연결 중…"); try{await startAzure(); noteGap("연결이 끊겨")}catch(e){azError(undefined,e&&e.message||String(e))} },ms);
 }
 function azError(code,details){
   const d=String(details||""); const EC=window.SpeechSDK?.CancellationErrorCode||{};
@@ -884,7 +907,11 @@ $("#pauseBtn").addEventListener("click",()=>{
 
 let wake=null;
 async function keepAwake(){try{wake=await navigator.wakeLock?.request("screen")}catch(_){}}
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.live){keepAwake(); if(!S.paused&&listenMode()==="web"){try{rec.start()}catch(_){}} if(!S.paused&&listenMode()==="azure"&&!az) startListen()}});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.live){keepAwake(); if(!S.paused&&listenMode()==="web"){try{rec.start()}catch(_){}} if(!S.paused&&listenMode()==="azure"&&!az) startListen(); if(!S.paused) noteGap("다른 앱·전화 등으로")}});
+/* v4.1 메모 화면 */
+function setMemo(on){ S.memo=!!on; document.body.classList.toggle("memo",S.memo); document.title=S.memo?"상담 기록":"1급 비서관"; const b=$("#memoBtn"); if(b) b.textContent=S.memo?"자세히":"메모 화면"; if(!S.memo){renderNotes();renderBrief()} }
+$("#memoBtn").addEventListener("click",()=>setMemo(!S.memo));
+document.querySelector("header h1").addEventListener("dblclick",()=>{ if(S.live) setMemo(!S.memo) });
 
 $("#setup").addEventListener("submit",e=>{
   e.preventDefault(); if(S.live) return;
@@ -903,16 +930,16 @@ function beginLive(){
   $("#setup").hidden=true; $("#controls").hidden=false; $("#pauseBtn").textContent="일시정지";
   $("#hint").textContent="폰은 화면을 켜 둔 채 두 사람 사이에 놓아 주세요. 틀린 이름표는 누르면 바뀝니다."; setTimeout(()=>{if(S.live)$("#hint").classList.add("live-hide")},8000);
   setStatus("듣는 중 · "+(S.setup.name||S.setup.role),"live");
-  seenNotes=new Set(S.notes.map(n=>n.id)); renderScript(); renderBrief(); renderNotes(); startListen(); keepAwake(); saveDraft();
+  seenNotes=new Set(S.notes.map(n=>n.id)); renderScript(); renderBrief(); renderNotes(); heard(); startListen(); keepAwake(); saveDraft(); setMemo(!!S.memo);
 }
 /* ---------- 새로고침·실수로 닫아도 대화가 사라지지 않게: 계속 임시 저장 ---------- */
-function saveDraft(){ if(!S.live&&!S.lines.length) return; LS.set("draft",{setup:S.setup,lines:S.lines,notes:S.notes,mon:S.mon,moods:S.moods,startedAt:S.startedAt,analyzedUpTo:S.analyzedUpTo,noteSeq,savedAt:Date.now()}) }
+function saveDraft(){ if(!S.live&&!S.lines.length) return; LS.set("draft",{setup:S.setup,lines:S.lines,notes:S.notes,mon:S.mon,moods:S.moods,startedAt:S.startedAt,analyzedUpTo:S.analyzedUpTo,noteSeq,memo:!!S.memo,savedAt:Date.now()}) }
 setInterval(()=>{ if(S.live) saveDraft() },3000);
 document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="hidden"&&S.live) saveDraft() });
 window.addEventListener("pagehide",()=>{ if(S.live) saveDraft() });
 window.addEventListener("beforeunload",e=>{ if(S.live){ saveDraft(); e.preventDefault(); e.returnValue="" } });
 function restoreDraft(d){
-  Object.assign(S,{setup:d.setup,lines:d.lines||[],notes:d.notes||[],mon:d.mon||null,moods:d.moods||[],startedAt:d.startedAt,analyzedUpTo:d.analyzedUpTo||0,live:true,paused:false,interim:"",cards:[],last:null,lastRun:0});
+  Object.assign(S,{setup:d.setup,lines:d.lines||[],notes:d.notes||[],mon:d.mon||null,moods:d.moods||[],startedAt:d.startedAt,analyzedUpTo:d.analyzedUpTo||0,live:true,paused:false,interim:"",cards:[],last:null,lastRun:0,memo:!!d.memo});
   noteSeq=d.noteSeq||S.notes.length; $("#pName").value=d.setup?.name||""; try{$("#pType").value=d.setup?.type||"consult"}catch(_){}; matchMemory();
 }
 function checkDraft(){
@@ -955,7 +982,7 @@ ${STANCE_RULE}
   const file=`${localDate(S.startedAt)} ${who} - ${sum.title||M().label}.md`.replace(/[\\/:*?"<>|]/g,"_");
   const autoSaved=await saveToVault(file,md);
   setStatus(autoSaved?"볼트에 저장됨":"정리 완료","");
-  $("#setup").hidden=false; $("#controls").hidden=true; $("#hint").classList.remove("live-hide");
+  $("#setup").hidden=false; $("#controls").hidden=true; $("#hint").classList.remove("live-hide"); setMemo(false);
   $("#hint").textContent="대화 시작을 누르면 마이크가 계속 켜져서 끝날 때까지 받아 적습니다.";
   LS.set("draft",null);
   showNote(md,file,autoSaved);
