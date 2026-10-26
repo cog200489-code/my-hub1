@@ -189,7 +189,7 @@ body.memo .pane-h b span{display:none}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1><span class="t">1급 비서관</span> <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v4.1</small></h1>
+    <h1><span class="t">1급 비서관</span> <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v4.2</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -208,7 +208,7 @@ body.memo .pane-h b span{display:none}
 
   <div class="split">
     <section class="pane p-script" aria-label="속기록">
-      <div class="pane-h"><b><span>속기록</span></b><span id="lineCount">0줄</span><span class="r"><span class="badge" id="exL">예시</span></span></div>
+      <div class="pane-h"><b><span>속기록</span></b><span id="lineCount">0줄</span><span id="memoDot" hidden title="새 쪽지" style="width:7px;height:7px;border-radius:50%;background:var(--warn);display:inline-block"></span><span class="r"><span class="badge" id="exL">예시</span></span></div>
       <div class="scroll" id="script"></div>
     </section>
     <section class="pane p-notes" aria-label="비서실 쪽지">
@@ -476,7 +476,7 @@ function addNotes(arr,forcedKind){
   for(const n of (arr||[])){ if(!n||!n.head) continue;
     S.notes.push({id:"n"+(++noteSeq),t,kind:forcedKind||n.kind||"주의",trigger:n.trigger||"",head:n.head,points:[].concat(n.points||[]).slice(0,3),facts:[].concat(n.facts||[]).slice(0,3),search:n.search||"",caution:n.caution||""}) }
   if(S.notes.length>60) S.notes=S.notes.filter(n=>n.pinned).concat(S.notes.filter(n=>!n.pinned).slice(-50));
-  if(S.memo&&arr.length&&navigator.vibrate) try{navigator.vibrate([60,80,60])}catch(_){}   /* 메모 화면일 때 새 쪽지는 짧은 진동으로만 알림 */
+  if(S.memo&&arr.length) $("#memoDot").hidden=false;   /* 메모 화면일 때 새 쪽지는 제목 옆 작은 점으로만 (소리·진동 없음) */
   renderNotes();
 }
 function setStatus(t,cls){$("#statusText").textContent=t;const s=$("#status");s.classList.toggle("live",cls==="live");s.classList.toggle("paused",cls==="paused")}
@@ -909,7 +909,7 @@ let wake=null;
 async function keepAwake(){try{wake=await navigator.wakeLock?.request("screen")}catch(_){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.live){keepAwake(); if(!S.paused&&listenMode()==="web"){try{rec.start()}catch(_){}} if(!S.paused&&listenMode()==="azure"&&!az) startListen(); if(!S.paused) noteGap("다른 앱·전화 등으로")}});
 /* v4.1 메모 화면 */
-function setMemo(on){ S.memo=!!on; document.body.classList.toggle("memo",S.memo); document.title=S.memo?"상담 기록":"1급 비서관"; const b=$("#memoBtn"); if(b) b.textContent=S.memo?"자세히":"메모 화면"; if(!S.memo){renderNotes();renderBrief()} }
+function setMemo(on){ S.memo=!!on; document.body.classList.toggle("memo",S.memo); document.title=S.memo?"상담 기록":"1급 비서관"; const b=$("#memoBtn"); if(b) b.textContent=S.memo?"자세히":"메모 화면"; $("#memoDot").hidden=true; if(!S.memo){renderNotes();renderBrief()} }
 $("#memoBtn").addEventListener("click",()=>setMemo(!S.memo));
 document.querySelector("header h1").addEventListener("dblclick",()=>{ if(S.live) setMemo(!S.memo) });
 
