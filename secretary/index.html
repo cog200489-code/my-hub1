@@ -8,6 +8,8 @@
 <title>1급 비서관</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@600;800&family=IBM+Plex+Sans+KR:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -189,7 +191,7 @@ body.memo .pane-h b span{display:none}
 <div class="app">
   <header>
     <div class="seal" aria-hidden="true">秘書</div>
-    <h1><span class="t">1급 비서관</span> <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v4.2</small></h1>
+    <h1><span class="t">1급 비서관</span> <small style="font-family:var(--f-mono);font-size:11px;color:var(--muted);font-weight:400">v4.3</small></h1>
     <div class="status" id="status"><span class="dot"></span><span id="statusText">대기</span></div>
     <button id="pastBtn">지난 대화</button>
     <button id="setBtn" aria-label="설정">설정</button>
@@ -229,7 +231,7 @@ body.memo .pane-h b span{display:none}
       <button type="button" data-spk="other" aria-pressed="false">상대</button>
     </div>
     <button id="pauseBtn">일시정지</button>
-    <button id="memoBtn" title="쪽지·상황판을 감추고 받아쓴 글만 보입니다. 제목을 두 번 두드려도 바뀝니다.">메모 화면</button>
+    <button id="memoBtn" title="쪽지·상황판을 감추고 받아쓴 글만 보입니다. 제목을 두 번 두드리거나 F8을 눌러도 바뀝니다.">메모 화면</button>
     <button id="askBtn" class="ask" title="지금 할 말을 쪽지로 받기">💡 지금 할 말</button>
     <span class="grow"></span>
     <button class="danger" id="endBtn">종료·정리</button>
@@ -907,7 +909,13 @@ $("#pauseBtn").addEventListener("click",()=>{
 
 let wake=null;
 async function keepAwake(){try{wake=await navigator.wakeLock?.request("screen")}catch(_){}}
-document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.live){keepAwake(); if(!S.paused&&listenMode()==="web"){try{rec.start()}catch(_){}} if(!S.paused&&listenMode()==="azure"&&!az) startListen(); if(!S.paused) noteGap("다른 앱·전화 등으로")}});
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&S.live){keepAwake();
+  /* 노트북 크롬은 다른 창을 봐도 마이크가 계속 살아 있으므로, 끊김 줄은 폰(안드로이드)이거나 애저가 실제로 멈춘 경우에만 */
+  const stopped=IS_ANDROID||(listenMode()==="azure"&&!az);
+  if(!S.paused&&listenMode()==="web"){try{rec.start()}catch(_){}} if(!S.paused&&listenMode()==="azure"&&!az) startListen(); if(!S.paused&&stopped) noteGap("다른 앱·전화 등으로"); else heard()}});
+/* v4.3 노트북 단축키: F9 = 💡 지금 할 말, F8 = 메모 화면 (F10은 크롬 메뉴 단축키라 피함) */
+document.addEventListener("keydown",e=>{ if(!S.live||(e.target&&e.target.matches&&e.target.matches("input,textarea,select"))) return;
+  if(e.key==="F9"){e.preventDefault();advise()} else if(e.key==="F8"){e.preventDefault();setMemo(!S.memo)} });
 /* v4.1 메모 화면 */
 function setMemo(on){ S.memo=!!on; document.body.classList.toggle("memo",S.memo); document.title=S.memo?"상담 기록":"1급 비서관"; const b=$("#memoBtn"); if(b) b.textContent=S.memo?"자세히":"메모 화면"; $("#memoDot").hidden=true; if(!S.memo){renderNotes();renderBrief()} }
 $("#memoBtn").addEventListener("click",()=>setMemo(!S.memo));
@@ -928,7 +936,7 @@ $("#setup").addEventListener("submit",e=>{
 });
 function beginLive(){
   $("#setup").hidden=true; $("#controls").hidden=false; $("#pauseBtn").textContent="일시정지";
-  $("#hint").textContent="폰은 화면을 켜 둔 채 두 사람 사이에 놓아 주세요. 틀린 이름표는 누르면 바뀝니다."; setTimeout(()=>{if(S.live)$("#hint").classList.add("live-hide")},8000);
+  $("#hint").textContent=IS_ANDROID?"폰은 화면을 켜 둔 채 두 사람 사이에 놓아 주세요. 다른 앱으로 나가면 그동안은 듣지 못합니다. 틀린 이름표는 누르면 바뀝니다.":"다른 창을 봐도 받아쓰기는 계속됩니다. F9 = 💡 지금 할 말, F8 = 메모 화면. 틀린 이름표는 누르면 바뀝니다."; setTimeout(()=>{if(S.live)$("#hint").classList.add("live-hide")},8000);
   setStatus("듣는 중 · "+(S.setup.name||S.setup.role),"live");
   seenNotes=new Set(S.notes.map(n=>n.id)); renderScript(); renderBrief(); renderNotes(); heard(); startListen(); keepAwake(); saveDraft(); setMemo(!!S.memo);
 }
